@@ -25,7 +25,7 @@ export function groupOf(provider) {
     'venice': 'Venice',
     'venice-image': 'Venice',
     'openrouter': 'OpenRouter',
-    'vnaipro': 'VNAIPro',
+    'vnaipro': 'Claude Gateway (VNAIPro)',
     'google-ai-studio': 'Gemini',
     'grok': 'xAI',
     'groq': 'Groq',

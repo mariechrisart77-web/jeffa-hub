@@ -5,7 +5,7 @@ const M = await import('../apps/shared/models.js');
 test('v78 Modelle: kostenlos zuerst, bezahlt nur mit Freigabe, 💲 markiert', () => {
   assert.ok(M.isFree('nvidia/nemotron-3-ultra-550b-a55b:free') && !M.needsApproval('gemini-3.5-flash-lite') && !M.needsApproval('venice-uncensored-1-2') && M.needsApproval('openai/gpt-5'));
   for (const adult of [false, true]) {
-    const c = M.resolveChain({ adult, paidAllowed: false });
+    const c = M.resolveChain({ adult, paidAllowed: false, mode: 'manual' }); // v84: Automatik stellt in 18+ Venice (eigener Key) vor
     assert.ok(c.length && c.every(x => !M.needsApproval(x)), JSON.stringify(c));
     assert.ok(M.isFree(c[0]));
   }

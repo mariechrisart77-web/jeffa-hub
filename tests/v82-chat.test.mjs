@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { cleanForTTS } from '../apps/shared/tts-clean.js';
-import { castLine, otherProfileNames, identityAnchor, capSystem } from '../apps/chat/sysprompt.js';
+import { castLine, otherProfileNames, identityAnchor, capSystem } from '../apps/shared/promptapp/chat.js';
 import { mentionsName, scopeForFact, filterForProfile } from '../src/memory-scope.js';
 import { liteCopy, mergeStores, pickConvForProfile, idbGet, idbSet } from '../apps/chat/convstore.js';
 
@@ -210,10 +210,12 @@ const C = readFileSync('apps/chat/chat.js', 'utf8');
 const PR = readFileSync('apps/chat/profiles.js', 'utf8');
 const CT = readFileSync('functions/api/chat.ts', 'utf8');
 const MT = readFileSync('src/memory.ts', 'utf8');
+const PA = readFileSync('apps/shared/promptapp/chat.js', 'utf8'); // v84 P1: Systemprompt-Aufbau liegt in der Prompt-App
 test('v82 Verdrahtung chat.js', () => {
-  for (const s of ['visibilitychange', 'capSystem(', 'identityAnchor(', 'castLine(', 'id="tts-stop"', 'toggleSpeak(', 'jeffa.currentConv', 'jeffa.lastConvByProfile', 'idbSet(IDB_KEY', 'liteCopy(convCache)']) assert.ok(C.includes(s), s);
+  for (const s of ['visibilitychange', 'capSystem(', 'buildChatSystem(', 'id="tts-stop"', 'toggleSpeak(', 'jeffa.currentConv', 'jeffa.lastConvByProfile', 'idbSet(IDB_KEY', 'liteCopy(convCache)']) assert.ok(C.includes(s), s);
   assert.ok(!C.includes('system.slice(-4000)') && !C.includes('system.slice(0, 3000)'));
-  assert.ok(!/In Geschichten vorkommende Figuren/.test(C), 'alter globaler Cast-Block entfernt');
+  for (const s of ['identityAnchor(p, otherNames)', 'castLine(p, cast, getProfile)']) assert.ok(PA.includes(s), s);
+  assert.ok(!/In Geschichten vorkommende Figuren/.test(C + PA), 'alter globaler Cast-Block entfernt');
   assert.ok(!/^import .*(me\.js|tts\.js)/m.test(C), 'TTS bleibt lazy (v63)');
   // nie leeren Stand schreiben: erst mergen, dann v68-Neuspeicherung
   assert.ok(C.indexOf('convCache = mergeStores(idbConvs, lsConvs)') < C.indexOf('parsed.ct && !isEncryptOn()) await persist(true)'));
@@ -228,5 +230,5 @@ test('v82 Verdrahtung profiles.js / Server', () => {
 test('v82 Jugendschutz-Bausteine unverändert vorhanden', () => {
   assert.match(C, /effectiveAdult\(conv, profile\)/);
   assert.match(C, /mode: chatMode\(conv, profile\)/);
-  assert.match(CT, /applyModeToSystem\(systemPrompt, body\.mode\)/);
+  assert.match(CT, /applyModeToSystem\(systemPrompt, chatModeNorm\)/); assert.match(CT, /chatModeNorm = normalizeChatMode\(body\.mode\)/);
 });

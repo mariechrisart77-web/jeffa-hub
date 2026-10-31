@@ -5,7 +5,8 @@ import { checkBudget } from "../../src/budget";
 import { checkRateLimit } from "../../src/ratelimit";
 import { trackUsage } from "../../src/usage";
 import { relevantMemories } from "../../src/memory";
-import { applyModeToSystem } from "../../src/mode-server.js";
+import { applyModeToSystem, normalizeChatMode } from "../../src/mode-server.js";
+import { isRefusal, refusalFallback, createRefusalGate } from "../../apps/shared/promptapp/chat.js";
 
 interface ChatBody {
   model?: string;
@@ -96,7 +97,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const noteList = notes.slice(0, 5).map((n) => `- ${n}`).join("\n");
     systemPrompt += `\n\nLernnotizen:\n${noteList}`;
   }
-  systemPrompt = applyModeToSystem(systemPrompt, body.mode);
+  const chatModeNorm = normalizeChatMode(body.mode);
+  systemPrompt = applyModeToSystem(systemPrompt, chatModeNorm);
   if (body.memory !== false) {
     try {
       const q = trimmed.slice(-3).map((x) => x.content).join(" ").slice(-1500);
@@ -155,8 +157,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     (async () => {
       let lastErr: ProviderError | null = null;
+      // v84 P3: Ablehnungs-Fallback nur im Modus hemmungslos; max 2 Wechsel (Fehler-Fallback zählt nicht mit).
+      const refusalMode = chatModeNorm === "hemmungslos";
+      const queue = [...usable];
+      const tried: string[] = [];
+      const refused: string[] = [];
       try {
-        for (const m of usable) {
+        for (let qi = 0; qi < queue.length; qi++) {
+          const m = queue[qi];
           let wrote = 0;
           const counting = {
             write: (chunk: Uint8Array) => {
@@ -164,14 +172,37 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
               return writer.write(chunk);
             },
           } as unknown as WritableStreamDefaultWriter<Uint8Array>;
+          // Gate puffert die ersten ≥240 sichtbaren Zeichen; erst danach geht etwas an den Client (wrote zählt nur Geschriebenes).
+          const gate = refusalMode ? createRefusalGate({ minChars: 240, onFlush: (txt: string) => counting.write(encoder.encode(txt)) }) : null;
+          const gateWriter = gate ? ({ write: (chunk: Uint8Array) => gate.write(chunk) } as unknown as WritableStreamDefaultWriter<Uint8Array>) : counting;
           try {
             const hasVideo = trimmed.some((msg) => msg.video);
             if (hasVideo && !m.startsWith("gemini")) {
               await sse({ notice: "Video wird ignoriert – nur Gemini-Modelle unterstützen Video." });
             }
-            await streamModel(context.env, { model: m, system: systemPrompt, messages: trimmed, maxTokens, stream: true, private: privateFlag }, counting, context.request.signal);
+            await streamModel(context.env, { model: m, system: systemPrompt, messages: trimmed, maxTokens, stream: true, private: privateFlag }, gateWriter, context.request.signal);
+            tried.push(m);
+            if (gate) {
+              await gate.finish();
+              if (gate.refused) {
+                const next = refused.length < 2 ? refusalFallback(queue, tried, { max: 2, refused: [...refused, m] }) : "";
+                if (next) {
+                  refused.push(m);
+                  const later = queue.indexOf(next, qi + 1);
+                  if (later >= 0) queue.splice(later, 1);
+                  queue.splice(qi + 1, 0, next);
+                  console.warn("refusal", m, "->", next, `(${refused.length}/2)`);
+                  await sse({ notice: `${modelShort(m)} hat abgelehnt → wechsle zu ${modelShort(next)} (unzensiert)` });
+                  continue;
+                }
+                // Keine Wechsel mehr: letzte Antwort (auch eine Ablehnung) normal ausliefern.
+                refused.push(m);
+                console.warn("refusal", m, "-> kein Wechsel mehr");
+                await gate.release();
+              }
+            }
             if (wrote === 0) throw new ProviderError(502, "empty_reply", "Leere Antwort");
-            await sse({ model: m, tried: usable.slice(0, usable.indexOf(m) + 1) });
+            await sse({ model: m, tried: [...tried], ...(refusalMode ? { switched: refused.filter((x) => x !== m).length, refused } : {}) });
 
             const provider = providerFor(m)!;
             const estimatedTokens = { promptTokens: Math.ceil(promptChars / 4), outputTokens: Math.ceil(wrote / 4) };
@@ -187,10 +218,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             const err = e instanceof ProviderError ? e : new ProviderError(500, "internal_error", (e as Error).message);
             console.warn(`chain: ${m} failed (${err.status} ${err.code})`);
             lastErr = err;
+            if (!tried.includes(m)) tried.push(m);
             if (wrote > 0 || !retryable(err) || context.request.signal.aborted) break;
             const src = m.endsWith(":free") ? "OpenRouter" : providerFor(m)?.id === "venice" ? "Venice" : m;
             const why = err.code === "empty_reply" ? "Leere Antwort" : err.status === 429 ? "Limit erreicht" : err.status === 402 ? "Kein Guthaben" : "Fehler";
-            if (usable.indexOf(m) < usable.length - 1) await sse({ notice: `${src}: ${why} → nächstes ${m.endsWith(":free") ? "Gratis-" : ""}Modell` });
+            if (qi < queue.length - 1) await sse({ notice: `${src}: ${why} → nächstes ${m.endsWith(":free") ? "Gratis-" : ""}Modell` });
           }
         }
         if (lastErr && body.paidAllowed !== true) await sse({ error: { code: "no_free_model", message: "Kein kostenloses Modell hat geantwortet (" + lastErr.message.slice(0, 120) + "). Bezahlte Modelle sind gesperrt – bitte später erneut versuchen oder in den Einstellungen „Bezahlte Modelle erlaubt“ einschalten." } });
@@ -209,14 +241,31 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   }
 
   let lastError: ProviderError | null = null;
-  for (const m of usable) {
+  const nsQueue = [...usable];
+  const nsTried: string[] = [];
+  const nsRefused: string[] = [];
+  for (let qi = 0; qi < nsQueue.length; qi++) {
+    const m = nsQueue[qi];
     try {
       const hasVideo = trimmed.some((msg) => msg.video);
       if (hasVideo && !m.startsWith("gemini")) {
         for (const msg of trimmed) delete msg.video;
       }
+      nsTried.push(m);
       const result = await callModel(context.env, { model: m, system: systemPrompt, messages: trimmed, maxTokens, stream: false, private: privateFlag });
       if (!result.reply) throw new ProviderError(502, "empty_reply", "Leere Antwort");
+      // v84 P3: Ablehnungs-Fallback nur im Modus hemmungslos, max 2 Wechsel.
+      if (chatModeNorm === "hemmungslos" && isRefusal(result.reply)) {
+        const next = nsRefused.length < 2 ? refusalFallback(nsQueue, nsTried, { max: 2, refused: [...nsRefused, m] }) : "";
+        nsRefused.push(m);
+        if (next) {
+          const later = nsQueue.indexOf(next, qi + 1);
+          if (later >= 0) nsQueue.splice(later, 1);
+          nsQueue.splice(qi + 1, 0, next);
+          console.warn("refusal", m, "->", next, `(${nsRefused.length}/2)`);
+          continue;
+        }
+      }
       const cost = estimateCost(m, result.usage);
       await checkBudget(context.env, ip, cost);
 
@@ -243,6 +292,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   }
   throw lastError && body.paidAllowed !== true ? new ProviderError(lastError.status, "no_free_model", "Kein kostenloses Modell hat geantwortet. Bezahlte Modelle sind gesperrt (Einstellungen → „Bezahlte Modelle erlaubt“).") : lastError ?? new ProviderError(503, "no_model_available", "Kein Modell verfügbar");
 };
+
+function modelShort(id: string): string { return String(id).replace(/^[a-z]+:/, "").replace(/:free$/, "").split("/").pop()!.slice(0, 40); }
 
 /** v79: true = ohne Freigabe nutzbar (kostenlos ODER Anbieter mit eigenem Key/Volumen: Venice, Gemini, LumiaRouter). */
 export function isFreeModel(id: string): boolean { return /:free$/.test(id) || id.startsWith("auto:") || /^(groq|mistral|venice|gemini|lumia)/.test(id); }

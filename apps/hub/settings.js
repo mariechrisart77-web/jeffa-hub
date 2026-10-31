@@ -3,7 +3,7 @@ import { authState, ensureAdmin, registerWebAuthn, setupPin, logout } from './sh
 import { lockScreen } from './shared/auth.js';
 import { api, APIError } from './shared/api.js';
 import { getProfile } from './profiles.js';
-import { getPaidAllowed, setPaidAllowed, getDefaultModel, setDefaultModel, modelInfo, pickModel, renderRouteEditor, getImageStyle, setImageStyle, getImageOpt, setImageOpt } from './shared/models.js';
+import { getPaidAllowed, setPaidAllowed, getDefaultModel, setDefaultModel, modelInfo, pickModel, renderRouteEditor, getImageStyle, setImageStyle, getImageOpt, setImageOpt, getModelMode, setModelMode } from './shared/models.js';
 import { ENCRYPT_WARN } from './shared/crypto.js';
 
 const get = () => { try { return JSON.parse(localStorage.getItem('jeffa.settings') || '{}'); } catch { return {}; } };
@@ -28,6 +28,12 @@ export async function init(root) {
 
       <div class="card">
         <h3 style="font-size:1rem;margin-bottom:0.5rem">🤖 Chat-Modell (Standard für neue Chats)</h3>
+        <label class="field-label">Modellwahl</label>
+        <select id="s-model-mode">
+          <option value="auto">✨ Automatisch (empfohlen)</option>
+          <option value="manual">✋ Manuell (Standard-Modell)</option>
+        </select>
+        <div class="hint" id="s-model-mode-hint">Automatisch wählt passend zum Modus: hemmungslos → unzensiert (Venice), Spanisch-Lehrer → Qwen/DeepSeek, Bilder im Verlauf → Vision-Modell, sonst die Reihenfolge aus „KI-Weg“.</div>
         <button class="model-current" id="s-model"></button>
         <div class="hint">Jeder Chat und jedes Profil kann ein eigenes Modell haben (Modellname unter einer Antwort oder im Chat-Kopf antippen).</div>
       </div>
@@ -49,7 +55,12 @@ export async function init(root) {
           <option value="comicpage">Comic-Seite mit spanischen Sprechblasen 🇪🇸</option>
         </select>
         <div class="hint">Realistisch, Comic-Stil und Manhwa enthalten keinen Text. Nur die Comic-Seite (wenn ausgewählt): 3 Panels, die App legt kurze spanische Sprechblasen darüber (antippen = Deutsch).</div>
-        <label class="field-label">Bildqualität</label>
+        <label class="field-label">Bildmodell</label>
+        <select id="s-imgmodel-mode">
+          <option value="auto">✨ Automatisch (empfohlen)</option>
+          <option value="manual">✋ Manuell</option>
+        </select>
+        <label class="field-label" id="s-imgq-label">Bildqualität</label>
         <select id="s-imgq">
           <option value="single">Einzelbild nach Profil-Einstellung – Standard z-image · FSK18 chroma (≈ 0,01 $)</option>
           <option value="mix">Spar-Mix: Hintergrund + Person getrennt (≈ 0,03 $) · Standard – in FSK18 automatisch chroma-Einzelbild (≈ 0,01 $)</option>
@@ -67,6 +78,15 @@ export async function init(root) {
           <option value="3">Etwa jede 3. Antwort</option>
           <option value="5">Etwa jede 5. Antwort</option>
         </select>
+        <label class="field-label">Bilder im Modus jugendfrei</label>
+        <select id="s-imgevery">
+          <option value="5-10">Etwa jede 5.–10. Antwort (Standard)</option>
+          <option value="3">Etwa jede 3. Antwort</option>
+          <option value="5">Etwa jede 5. Antwort</option>
+          <option value="10">Etwa jede 10. Antwort</option>
+          <option value="request">Nur auf Anfrage</option>
+        </select>
+        <div class="hint">Gilt nur für jugendfrei; hemmungslos folgt „Wie oft Bilder?“. Fragst du ausdrücklich nach einem Bild, kommt es immer.</div>
       </div>
 
       <div class="card">
@@ -154,9 +174,16 @@ export async function init(root) {
     fetch('/sw.js', { cache: 'no-store' }).then(r => r.text()).then(t => { const sv = (t.match(/jeffa-v\d+/) || ['?'])[0]; const run = window.__JEFFA_V || sv; v.textContent = `Version ${run.replace('jeffa-', '')}` + (run !== sv ? ` · Server hat ${sv.replace('jeffa-', '')} – bitte neu laden` : ''); }).catch(() => {}); }
 
   const mBtn = root.querySelector('#s-model');
-  const drawM = () => { const i = modelInfo(getDefaultModel()); mBtn.innerHTML = `<b>${i.label}</b><small>${i.desc}</small><span>▾</span>`; };
+  const drawM = () => {
+    const i = modelInfo(getDefaultModel()); mBtn.innerHTML = `<b>${i.label}</b><small>${i.desc}</small><span>▾</span>`;
+    const auto = getModelMode() === 'auto';
+    mBtn.disabled = auto; mBtn.title = auto ? 'nur bei Manuell' : '';
+    const mm = root.querySelector('#s-model-mode'); if (mm) mm.value = getModelMode();
+    const h = root.querySelector('#s-model-mode-hint'); if (h) h.style.display = auto ? '' : 'none';
+  };
   drawM();
-  mBtn.onclick = async () => { const id = await pickModel({ title: 'Standard-Modell', current: getDefaultModel(), allowDefault: false }); if (id) { setDefaultModel(id); drawM(); } };
+  root.querySelector('#s-model-mode').onchange = (e) => { setModelMode(e.target.value); drawM(); };
+  mBtn.onclick = async () => { if (getModelMode() === 'auto') return; const id = await pickModel({ title: 'Standard-Modell', current: getDefaultModel(), allowDefault: false }); if (id) { setDefaultModel(id); drawM(); } };
   { const c = root.querySelector('#s-paid'); if (c) { c.checked = getPaidAllowed(); c.onchange = () => setPaidAllowed(c.checked); } }
   renderRouteEditor(root.querySelector('#route-adult'), 'adult');
   renderRouteEditor(root.querySelector('#route-normal'), 'normal');
@@ -188,7 +215,13 @@ export async function init(root) {
   };
   root.querySelector('#s-bots-open').onclick = async () => { const { ensureAdmin } = await import('./shared/auth.js'); if (!(await ensureAdmin())) return; (await import('./bot.js')).renderBotAdmin(root.querySelector('#s-bots')); };
   const is = root.querySelector('#s-imgstyle'); is.value = getImageStyle(); is.onchange = () => setImageStyle(is.value);
-  for (const [id, k, d] of [['#s-imgq', 'imageQuality', 'single'], ['#s-imgfreq', 'imageFreq', 'request']]) { const el = root.querySelector(id); el.value = getImageOpt(k, d); el.onchange = () => setImageOpt(k, el.value); }
+  for (const [id, k, d] of [['#s-imgq', 'imageQuality', 'single'], ['#s-imgfreq', 'imageFreq', 'request'], ['#s-imgevery', 'imageEverySfw', '5-10']]) { const el = root.querySelector(id); if (!el) continue; el.value = getImageOpt(k, d); el.onchange = () => setImageOpt(k, el.value); }
+  { // v84 P2: Bildmodell automatisch/manuell. Automatisch = 'single' (bestehender Auto-Pfad des Servers).
+    const sel = root.querySelector('#s-imgmodel-mode'), q = root.querySelector('#s-imgq'), ql = root.querySelector('#s-imgq-label');
+    const drawQ = () => { const mode = getImageOpt('imageModelMode', '') || (getImageOpt('imageQuality', 'single') === 'single' ? 'auto' : 'manual'); sel.value = mode; q.style.display = mode === 'auto' ? 'none' : ''; if (ql) ql.style.display = mode === 'auto' ? 'none' : ''; };
+    drawQ();
+    sel.onchange = () => { setImageOpt('imageModelMode', sel.value); if (sel.value === 'auto') { setImageOpt('imageQuality', 'single'); q.value = 'single'; } drawQ(); };
+  }
 
   root.querySelector('#s-adult').onchange = (e) => {
     if (e.target.checked) {

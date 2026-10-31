@@ -407,7 +407,7 @@ function getProviderName(key) {
     venice: 'Venice',
     hf: 'Hugging Face',
     xai: 'xAI',
-    vnaipro: 'VNAIPro',
+    vnaipro: 'Claude Gateway (VNAIPro)',
     'edge-tts': 'Edge TTS',
     gateway: 'Gateway',
     d1: 'D1'

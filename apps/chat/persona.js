@@ -7,6 +7,7 @@ import { ARCHETYPES, MAX_ARCHETYPES, VANILLA, conflictsWith, cleanArchetypes, ar
 import { pickModel, modelInfo } from './shared/models.js';
 import { bmi, bmiClass, cupLetter } from './shared/figure.js';
 import { sliderTerm, stylePrompt } from './shared/persona-terms.js';
+import { genderOf } from './shared/promptapp/chat.js';
 import { TYP, HAIR_COLOR, HAIR_LEN, STYLE, SPECIAL, GROESSE, STATUR, hairText, matchHair, matchOne, matchTyp, matchMulti, matchScale, chips, slider, scaleNames, bipolarName, voiceName, wirePickers, picked, pickedAll } from './pickers.js';
 
 const BASE_DIRECTIONS = [
@@ -149,7 +150,7 @@ export function renderPersonaEditor(root, profile, onSave) {
         const adultGen = isAdult() && profile.adultMode !== false;
         const res = await api('/api/persona', {
           method: 'POST',
-          body: { profile: profile.persona, adult: adultGen }
+          body: { profile: { ...(profile.persona || {}), gender: genderOf(profile) }, adult: adultGen }
         });
         if (adultGen) profile.systemPromptAdult = res.systemPrompt;
         else { profile.systemPrompt = res.systemPrompt; delete profile.systemPromptAdult; }
@@ -166,6 +167,12 @@ export function renderPersonaEditor(root, profile, onSave) {
   });
 }
 
+/** v84 P4: gespeichertes Geschlecht als Chip-Wert ('w'|'m'|'d'|'' = automatisch); alte Werte 'male'/'female' werden erkannt. */
+function explicitGender(profile) {
+  const raw = String(profile.persona?.gender || profile.gender || '').toLowerCase();
+  return /^(m|male|mann)$/.test(raw) ? 'm' : /^(w|f|female|frau)$/.test(raw) ? 'w' : /^(d|divers)$/.test(raw) ? 'd' : '';
+}
+
 function renderProfilTab(root, profile) {
   const langs = ['de', 'en'];
   queueMicrotask(() => import('./shared/quickfill.js').then((q) => q.quickfill(root)).catch(() => {})); // v64 presets
@@ -176,6 +183,11 @@ function renderProfilTab(root, profile) {
       <input type="text" id="p-name" value="${esc(profile.name)}" maxlength="50">
     </div>
     <div class="form-group">
+      <label>Geschlecht</label>
+      ${chips('p-gender', ['w', 'm', 'd', ''], explicitGender(profile), false, ['Weiblich', 'Männlich', 'Divers', 'Automatisch'])}
+      <small id="p-gender-hint" class="hint">${explicitGender(profile) ? '' : 'erkannt: ' + ({ m: 'männlich', w: 'weiblich', d: 'divers' }[genderOf({ ...profile, persona: profile.persona && { ...profile.persona, gender: '' }, gender: '' })] || 'keine Angabe')}</small>
+    </div>
+    <div class="form-group">
       <label>Avatar (Emoji)</label>
       <input type="text" id="p-avatar" value="${esc(profile.avatar)}" maxlength="10">
     </div>
@@ -183,9 +195,9 @@ function renderProfilTab(root, profile) {
       <label>Sprache</label>
       ${chips('p-lang', langs, langs.includes(profile.language) ? profile.language : 'de', false, ['Deutsch', 'English'])}
     </div>
-    <div class="form-group">
-      <label>Stimme</label>
-      <select id="p-voice"></select>
+    <div class="form-group pe-voice">
+      <label>🔊 Stimme</label>
+      <div style="display:flex;gap:6px;align-items:center"><select id="p-voice" style="flex:1;min-width:0"></select><button id="test-voice-btn" class="btn-secondary">Stimme anhören</button></div>
     </div>
     <div class="form-group">
       <label class="toggle-label">
@@ -193,7 +205,6 @@ function renderProfilTab(root, profile) {
         <span>Antworten automatisch vorlesen</span>
       </label>
     </div>
-    <button id="test-voice-btn" class="btn-secondary">Stimme anhören</button>
     </div>
     <details class="pe-adv"><summary>⚙️ Erweitert</summary>
     <div class="form-group">
@@ -291,6 +302,8 @@ function renderNotesList(root, profile) {
 
 function readProfilTab(root, profile) {
   profile.name = root.querySelector('#p-name').value.trim() || 'Profil';
+  // v84 P4: Geschlecht ('' = automatisch); 'm' bedeutet männlich, 'male' wird beim Lesen weiter akzeptiert.
+  { const g = picked(root, 'p-gender') || ''; if (g) { if (profile.persona) profile.persona.gender = g; profile.gender = g; } else { if (profile.persona) delete profile.persona.gender; delete profile.gender; } }
   profile.avatar = root.querySelector('#p-avatar').value.trim() || '👤';
   profile.description = root.querySelector('#p-desc').value.trim();
   profile.language = picked(root, 'p-lang') || profile.language || 'de';
@@ -609,7 +622,7 @@ function renderEigeneList(root, persona) {
 function readVorliebenTab(root, profile) {
   const p = profile.persona;
   p.vorlieben = Array.from(root.querySelectorAll('.vorliebe-check:checked')).map(c => c.value);
-  if (root.querySelector('.arch-check')) { p.archetypen = cleanArchetypes(Array.from(root.querySelectorAll('.arch-check:checked')).map(c => c.value)); p.archetypText = archetypeText(p.archetypen, true) || undefined; }
+  if (root.querySelector('.arch-check')) { p.archetypen = cleanArchetypes(Array.from(root.querySelectorAll('.arch-check:checked')).map(c => c.value)); p.archetypText = archetypeText(p.archetypen, true, genderOf(profile)) || undefined; }
 }
 
 function esc(str) {

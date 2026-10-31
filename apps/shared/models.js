@@ -11,7 +11,7 @@ export const MODELS = [
   { id: 'groq:openai/gpt-oss-120b', label: 'Groq GPT-OSS 120B', desc: 'Groq (eigener Key) · gratis im Free-Tier (Limits/Min) · sehr schnell, zensiert' },
   { id: 'groq:qwen/qwen3.8-27b', label: 'Groq Qwen 3.8 27B', desc: 'Groq (eigener Key) · gratis im Free-Tier · schnell, gutes Spanisch, eher zensiert' },
   { id: 'groq:openai/gpt-oss-20b', label: 'Groq GPT-OSS 20B', desc: 'Groq (eigener Key) · gratis im Free-Tier · blitzschnell, einfacher' },
-  { id: 'mistral:mistral-small-latest', label: 'Mistral Small', desc: 'Ersatz · Free-Kontingent · braucht Mistral-Key' },
+  { id: 'mistral:mistral-small-latest', label: 'Mistral Small', desc: 'Mistral (eigener Key aus dem Tresor) · gratis im Free-Kontingent · Ersatz, wenn Groq/OpenRouter am Limit sind' },
   { id: 'venice-uncensored-1-2', label: 'Venice Uncensored', desc: 'Venice · unzensiert, für 18+ · ~0,001 $/Nachricht (0,2/0,9 $ pro Mio Tokens)' },
   { id: 'venice-uncensored-role-play', label: 'Venice Role Play', desc: 'Venice · unzensiert, auf Rollenspiel trainiert · ~0,002 $/Nachricht (0,5/2 $ pro Mio)' },
   { id: 'venice:gemma-4-uncensored', label: 'Gemma 4 Uncensored (Venice)', desc: 'Venice · unzensiert, günstigste · ~0,0007 $/Nachricht (0,16/0,5 $ pro Mio)' },
@@ -30,6 +30,8 @@ export const modelInfo = (id) => { const i = _info(id); return needsApproval(id)
 export const modelLabel = (id) => modelInfo(id).label;
 
 export const DEFAULT_MODEL = 'nvidia/nemotron-3-ultra-550b-a55b:free';
+/** v84: Ersatzmodell am Kettenende (Mistral-Key im Tresor, Free-Kontingent). */
+export const MISTRAL_FALLBACK = 'mistral:mistral-small-latest';
 export const PRESETS = {
   normal: {
     Standard: ['nvidia/nemotron-3-ultra-550b-a55b:free', 'gemini-3.5-flash-lite', 'groq:openai/gpt-oss-120b', 'dots-studio/dots-3-note-preview:free', 'gemini-3.5-flash', 'groq:qwen/qwen3.8-27b'],
@@ -51,21 +53,41 @@ export function getRoute(kind) {
 export function setRoute(kind, list) { const s = read(); s['route_' + kind] = list; write(s); }
 export function getDefaultModel() { return read().defaultModel || DEFAULT_MODEL; }
 export function setDefaultModel(id) { const s = read(); s.defaultModel = id; write(s); }
+/** v84 P2: 'auto' (Standard) | 'manual' */
+export function getModelMode() { return read().modelMode === 'manual' ? 'manual' : 'auto'; }
+export function setModelMode(v) { const s = read(); s.modelMode = v === 'manual' ? 'manual' : 'auto'; write(s); }
+/** v84 P2: Bildmodell-Modus, rein aus den Settings abgeleitet. Gespeicherte Qualität ≠ 'single' → manuell. */
+export function imageModelMode(settings) { if (settings && settings.imageModelMode === 'manual') return 'manual'; if (settings && settings.imageModelMode === 'auto') return 'auto'; return 'auto'; }
+export function imageModelModeFromSettings() { const s = read(); if (s.imageModelMode === 'manual' || s.imageModelMode === 'auto') return s.imageModelMode; return (s.imageQuality || 'single') === 'single' ? 'auto' : 'manual'; }
 export function getImageStyle() { const v = read().imageStyle; return ['real', 'comic', 'manhwa', 'comicpage'].includes(v) ? v : 'real'; }
 export function setImageStyle(v) { const s = read(); s.imageStyle = v; write(s); }
 
 export function getPaidAllowed() { return read().paidAllowed === true; }
 export function setPaidAllowed(v) { const s = read(); s.paidAllowed = !!v; write(s); }
 
+// v84 P2: Automatik-Modellwahl liegt in apps/shared/promptapp/chat.js (rein; importiert models.js nicht → kein Zyklus).
+import { pickChatModels } from './promptapp/chat.js';
+
 /** Final chain: explicit choice (chat > profile > settings default) first, then the enabled route list.
  *  v79: kostenlose + eigene-Key-Modelle (Venice/Gemini/Lumia) in Ketten-Reihenfolge; Modelle ohne eigenen Key nur mit „Bezahlte Modelle erlaubt“ (Standard aus), hinten, nie stiller Fallback. */
-export function resolveChain({ chatModel, profileModel, adult, paidAllowed = getPaidAllowed() }) {
+export function resolveChain({ chatModel, profileModel, adult, paidAllowed = getPaidAllowed(), mode, profile, hasImages }) {
   const route = getRoute(adult ? 'adult' : 'normal').filter(r => r.on).map(r => r.id);
-  const first = chatModel || profileModel || getDefaultModel();
+  const explicit = chatModel || profileModel || '';
+  const mMode = mode || getModelMode();
+  // v84 P2: ohne ausdrückliche Wahl im Automatik-Modus die Wunschliste aus promptapp/chat.js nehmen.
+  let wish = [];
+  if (!explicit && mMode === 'auto') {
+    try { wish = pickChatModels({ adult, profile: profile || {}, hasImages: !!hasImages, route, defaultModel: getDefaultModel() }); } catch { wish = []; }
+  }
+  const first = explicit || wish[0] || getDefaultModel();
   const all = [];
-  for (const m of [first, ...route, DEFAULT_MODEL]) if (m && !all.includes(m)) all.push(m);
+  for (const m of [first, ...wish.slice(1), ...route, DEFAULT_MODEL]) if (m && !all.includes(m)) all.push(m);
   const free = all.filter(m => !needsApproval(m)), paid = paidAllowed ? all.filter(needsApproval) : [];
-  const pk = paid.slice(0, 2), out = [...free.slice(0, 6 - pk.length), ...pk];
+  const pk = paid.slice(0, 2), out = free.slice(0, 6 - pk.length);
+  // v84: Mistral (eigener Key im Tresor, gratis) immer als letzter Gratis-Ersatz dabei (vor 💲) – außer in der Route ausdrücklich ausgeschaltet.
+  const allRoute = getRoute(adult ? 'adult' : 'normal');
+  if (!out.includes(MISTRAL_FALLBACK) && !allRoute.some(r => r.id === MISTRAL_FALLBACK && !r.on)) out.push(MISTRAL_FALLBACK);
+  out.push(...pk);
   return out.length ? out : [DEFAULT_MODEL];
 }
 

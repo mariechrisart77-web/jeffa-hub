@@ -40,7 +40,8 @@ test('SFW_DIRECTIONS has 3 non-empty EN prompts', () => {
 });
 
 test('applyModeToSystem appends SFW rule only for jugendfrei', () => {
-  assert.equal(applyModeToSystem('X', 'hemmungslos'), 'X');
+  // v84 C5/P3: hemmungslos hängt Erwachsenen- + 18+-Altersregel an, nie die SFW-Regel
+  assert.ok(applyModeToSystem('X', 'hemmungslos').startsWith('X') && !applyModeToSystem('X', 'hemmungslos').includes(SFW_RULE) && /mindestens 18/.test(applyModeToSystem('X', 'hemmungslos')));
   assert.ok(applyModeToSystem('X', 'jugendfrei').startsWith('X'));
   assert.ok(applyModeToSystem('X', 'jugendfrei').includes(SFW_RULE));
   assert.equal(applyModeToSystem('X', undefined), 'X'); // alte Aufrufer ohne mode unverändert

@@ -547,3 +547,9 @@ textarea.typing-field { font-size: 16px !important; line-height: 1.4; padding: .
   #tab-bot .bot-list{padding-left:max(0px, env(safe-area-inset-left)); padding-right:max(0px, env(safe-area-inset-right))}
   #tab-bot .bot-msg{max-width:100%; width:100%; align-self:stretch; border-radius:0}
 }
+
+
+/* v84 C2: Stimme im Chat-Kopf – wie .hdr-model, auf Handy kompakt */
+.hdr-voice{background:none;border:0;color:inherit;opacity:.75;font-size:.72rem;padding:0;text-align:left;max-width:7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:700px){.hdr-voice{max-width:7rem;font-size:.7rem}}
+.voice-row{display:flex;gap:6px;align-items:center}.voice-row .model-opt{flex:1;min-width:0}.voice-row.sel .model-opt{outline:1px solid var(--accent,#22c55e)}

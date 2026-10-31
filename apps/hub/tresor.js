@@ -368,7 +368,7 @@ function getProviderName(key) {
     venice: 'Venice',
     hf: 'Hugging Face',
     xai: 'xAI',
-    vnaipro: 'VNAIPro',
+    vnaipro: 'Claude Gateway (VNAIPro)',
     groq: 'Groq',
     mistral: 'Mistral',
     runware: 'Runware'

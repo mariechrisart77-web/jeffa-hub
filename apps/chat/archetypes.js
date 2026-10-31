@@ -23,9 +23,20 @@ export function cleanArchetypes(ids = []) {
   const out = []; for (const id of ids) if (ARCHETYPES.some(a => a.id === id) && !out.some(o => conflictsWith(o).includes(id)) && !out.includes(id)) out.push(id);
   return out.slice(0, MAX_ARCHETYPES);
 }
-/** chosen ids -> combined fixed piece ('' outside FSK18) */
-export function archetypeText(ids = [], adult = false) {
+/** chosen ids -> combined fixed piece ('' outside FSK18). v84 P4: optional gender ('m' → männliche Form). */
+export function archetypeText(ids = [], adult = false, gender = '') {
   if (!adult) return '';
   const ok = cleanArchetypes(ids);
-  return ok.length ? ARCHETYPES.filter(a => ok.includes(a.id)).map(a => a.piece).join(' ') : VANILLA.piece;
+  const text = ok.length ? ARCHETYPES.filter(a => ok.includes(a.id)).map(a => a.piece).join(' ') : VANILLA.piece;
+  if (gender !== 'm') return text;
+  return text
+    .replace(/Erwachsene, selbstbewusste Exhibitionistin/g, 'Erwachsener, selbstbewusster Exhibitionist')
+    .replace(/Erwachsene, warmherzige, bemutende Frau/g, 'Erwachsener, warmherziger, fürsorglicher Mann')
+    .replace(/Erwachsene, warmherzige, bemutternde Frau/g, 'Erwachsener, warmherziger, fürsorglicher Mann')
+    .replace(/Erwachsene, offenherzige Frau/g, 'Erwachsener, offenherziger Mann')
+    .replace(/Erwachsene, dominante Frau/g, 'Erwachsener, dominanter Mann')
+    .replace(/Erwachsene, devote und verspielte Frau/g, 'Erwachsener, devoter und verspielter Mann')
+    .replace(/Erwachsene Verführerin/g, 'Erwachsener Verführer')
+    .replace(/Erwachsene Frau/g, 'Erwachsener Mann')
+    .replace(/\bFrau\b/g, 'Mann');
 }

@@ -2,7 +2,8 @@ import { convMeta, relTime } from './convmeta.js';
 import { chatMode, effectiveAdult } from './shared/mode.js';
 import { api, streamChat } from './shared/api.js';
 import { encryptJSON, decryptJSON, isEncryptOn } from './shared/crypto.js';
-import { getProfiles, getAllProfiles, getProfile, getActiveProfile, setActiveProfile, updateProfile, addProfile, onProfilesChanged, buildImagePrompt, addFeedbackNote, syncProfileNow, resolveForServer } from './profiles.js';
+import { getProfiles, getAllProfiles, getProfile, getActiveProfile, setActiveProfile, updateProfile, addProfile, onProfilesChanged, buildImagePrompt, addFeedbackNote, syncProfileNow, resolveForServer, EDGE_VOICES } from './profiles.js';
+import { voiceShortName } from './voicepick.js';
 let imageClientPromise = null;
 const loadImageClient = async () => {
   if (!imageClientPromise) imageClientPromise = import('./image-client.js');
@@ -14,7 +15,7 @@ const loadImageClient = async () => {
 };
 import { nextAngle } from './imginfo.js';
 import { renderMarkdown } from './shared/markdown.js';
-import { castLine, otherProfileNames, identityAnchor, capSystem } from './sysprompt.js';
+import { buildChatSystem, capSystem, otherProfileNames, autoImageDecision } from './shared/promptapp/chat.js';
 import { liteCopy, mergeStores, pickConvForProfile, idbGet, idbSet } from './convstore.js';
 const speak = (...a) => import('./shared/tts.js').then((m) => m.speak(...a)); // v63: TTS loads on demand
 import { setupTyping } from './shared/typing.js';
@@ -416,12 +417,14 @@ function renderHeader() {
       <div class="profile-name">${profile.name}</div>
       <div class="conv-title-inline">${conv.title}</div>
       <button class="hdr-model msg-model" id="hdr-model">🤖 ${escapeHtml(conv.model ? modelLabel(conv.model) : profile.model ? modelLabel(profile.model) + ' (Profil)' : 'Automatisch' + (isAdult() ? ' · 🔞' : ''))}</button>
+      <button class="hdr-voice" id="hdr-voice" title="Stimme wählen">🔊 ${escapeHtml(voiceShortName(profile?.voice?.voiceName, EDGE_VOICES) || 'Stimme')}</button>
       <span class="hdr-mode">${isAdult()
         ? `<select id="hdr-mode" aria-label="Modus"><option value="jugendfrei" ${chatMode(conv, profile) === 'jugendfrei' ? 'selected' : ''}>🔒 Modus: jugendfrei</option><option value="hemmungslos" ${chatMode(conv, profile) === 'hemmungslos' ? 'selected' : ''}>🔥 Modus: hemmungslos</option></select>`
         : `<span class="hdr-mode-fixed" title="Global jugendfrei – Modus nicht umschaltbar">🔒 Modus: jugendfrei</span>`}</span>
     </div>
   `;
   info.querySelector('#hdr-model').onclick = () => chooseChatModel(conv);
+  info.querySelector('#hdr-voice').onclick = () => pickVoice(conv, profile);
   const modeSel = info.querySelector('#hdr-mode');
   if (modeSel) modeSel.onchange = () => {
     const next = modeSel.value;
@@ -650,17 +653,8 @@ async function generateReply(conv, { secret = null, videos = [] } = {}) {
   if (secret && msgs.length) msgs[msgs.length - 1].content = (msgs[msgs.length - 1].content ? msgs[msgs.length - 1].content + '\n\n' : '') + secret;
   const me = getMe?.();
   const adultChat = effectiveAdult(conv, profile);
-  let system = (adultChat && profile.systemPromptAdult) || profile.systemPrompt || '';
-  if (profile.teacher === 'es') system += ' ' + ({ anfaenger: 'Niveau: Anfänger – sehr einfache, kurze spanische Sätze, immer übersetzen, langsam steigern.', mittel: 'Niveau: Mittel – etwa die Hälfte der Antwort auf Spanisch, Übersetzung nur für schwierigere Teile.', fortgeschritten: 'Niveau: Fortgeschritten – überwiegend Spanisch, Redewendungen und Umgangssprache aus Spanien, Deutsch nur für Erklärungen.' }[profile.spanishLevel] || ''); // v65
-  system += castLine(profile, cast, getProfile); // v82 C3: nur für Figuren
-  const otherNames = otherProfileNames(profile, getAllProfiles());
-  if (me?.name) system += `\nDer Nutzer heißt ${me.name}.`;
+  const { system, otherNames } = buildChatSystem({ profile, adult: adultChat, me, cast, getProfile, allProfiles: getAllProfiles() });
   const adult = adultChat;
-  if (adult) system += `\n\n[FSK18-Modus aktiv: Der Nutzer ist volljährig und hat Erwachseneninhalte freigeschaltet. Bleib in deiner Rolle und folge deiner Persona-Beschreibung.]`;
-  { const pt = personaChatText(profile.persona, adult); if (pt) system += `\n\n[${pt}]`; } // v78 D3
-  if (profile.beispielPersona) system += `\n\n[Stilvorlage des Nutzers – nur als Muster:]\n${String(profile.beispielPersona).slice(0, 1500)}\n[Ende Stilvorlage] Übernimm Aufbau, Ton und Detailgrad dieses Beispiels, aber schreib immer neuen Text passend zur aktuellen Szene, deinen Persona-Reglern und deinem Look.${adult ? '' : ' Nutze das Beispiel ausschließlich für Struktur und Ton; keine expliziten Inhalte.'}`;
-  system += identityAnchor(profile, otherNames); // v82 C3: Identitätsanker direkt vor der Foto-Regel
-  system += `\n\nDu KANNST Fotos/Bilder von dir oder der Szene schicken – die App erzeugt sie für dich. Lehne das nie ab und behaupte nie, du könntest keine Fotos senden. Wenn der Nutzer ein Foto/Bild möchte (oder es gut passt), antworte kurz in deiner Rolle und hänge GANZ AM ENDE genau eine Zeile an: [FOTO: kurze englische Beschreibung von Pose, Ort, Kleidung, Licht].`;
   const fullMsgs = msgs.slice();
   const summary = await compactHistory(conv, msgs);
   if (summary) msgs.splice(0, msgs.length - 8);
@@ -688,7 +682,7 @@ async function generateReply(conv, { secret = null, videos = [] } = {}) {
   }
   try {
     await streamChat({
-      modelChain: resolveChain({ chatModel: conv.model, profileModel: profile.model, adult }), paidAllowed: getPaidAllowed(), adult, mode: chatMode(conv, profile), system: capSystem(system), messages: msgs, stream: true,
+      modelChain: resolveChain({ chatModel: conv.model, profileModel: profile.model, adult, profile, hasImages: msgs.some((m) => Array.isArray(m.images) && m.images.length) }), paidAllowed: getPaidAllowed(), adult, mode: chatMode(conv, profile), system: capSystem(system), messages: msgs, stream: true,
       notes: (profile.notes || []).slice(0, 5), profileId: profile.id, summary: summary || undefined,
       profileName: profile.name, otherNames,
       memory: settingsGet().memory !== false && !isEncryptOn(),
@@ -714,10 +708,18 @@ async function generateReply(conv, { secret = null, videos = [] } = {}) {
   const userAsked = PHOTO_ASK.test(fullMsgs.at(-1)?.content || '');
   if (fotoM) { a.content = a.content.slice(0, fotoM.index).trim(); saveConversation(conv); renderMessages(); }
   const freq = getImageOpt('imageFreq', 'request');
-  const nReplies = conv.messages.filter(m => m.role === 'assistant' && !m.generated).length;
   const apP = autoPhoto(profile);
-  const autoPic = apP != null ? apP : freq === 'every' || (freq === '3' && nReplies % 3 === 0) || (freq === '5' && nReplies % 5 === 0);
-  if (a.status === 'done' && (freq !== 'off' || apP) && (fotoM || userAsked || autoPic)) {
+  const nReplies = conv.messages.filter(m => m.role === 'assistant' && !m.generated).length;
+  // v84 B1: Bildhäufigkeit – in jugendfrei gedrosselt (etwa jede 5.–10. Antwort), hemmungslos wie bisher.
+  const sfwEvery = getImageOpt('imageEverySfw', '5-10');
+  let imgDecision;
+  if (a.status === 'done') {
+    imgDecision = autoImageDecision({ mode: chatMode(conv, profile), userAsked, fotoTag: !!fotoM, freq, profileAuto: apP, conv, sfwEvery, nReplies });
+    if (imgDecision.nextAt != null) conv.nextImgAt = imgDecision.nextAt;
+    if (imgDecision.fire) conv.repliesSinceImg = 0; else conv.repliesSinceImg = (Number.isFinite(conv.repliesSinceImg) ? conv.repliesSinceImg : 0) + 1;
+    saveConversation(conv);
+  } else imgDecision = { fire: false };
+  if (imgDecision.fire) {
     const scene = (fotoM?.[1] || '').trim() || a.content.replace(/[#*_`>]/g, '').trim().slice(0, 300) || String(fullMsgs.at(-1)?.content || '').slice(0, 300);
     loadImageClient().then((fn) => fn({ scene }));
   }
@@ -848,6 +850,28 @@ const STYLE = {
   manhwa: 'Korean manhwa webtoon style, clean digital line art, soft cel shading, vibrant colors',
   story: 'photorealistic photo, cinematic',
 };
+function pickVoice(conv, profile) {
+  const m = document.createElement('div'); m.className = 'modal-backdrop';
+  const cur = profile?.voice?.voiceName || '';
+  const groups = EDGE_VOICES.map(({ group, voices }) => `<h4>${escapeHtml(group)}</h4>${voices.map(([name, label]) => `<div class="voice-row${name === cur ? ' sel' : ''}" data-v="${name}"><button class="model-opt" data-pick="${name}">${name === cur ? '✓ ' : ''}${escapeHtml(label)}</button><button class="btn-sm secondary" data-probe="${name}" aria-label="Probe hören">▶︎</button></div>`).join('')}`).join('');
+  m.innerHTML = `<div class="modal model-sheet"><h3>Stimme wählen</h3>${groups}
+    <label class="toggle-label" style="margin-top:8px"><input type="checkbox" id="vs-autoread" ${profile?.voice?.autoRead && profile.voice.autoReadSet ? 'checked' : ''}> <span>Automatisch vorlesen</span></label>
+    <button class="btn-sm secondary" data-x style="margin-top:8px;width:100%">Schließen</button></div>`;
+  document.body.appendChild(m);
+  const lang = profile?.language || 'de';
+  m.addEventListener('click', async (e) => {
+    if (e.target === m || e.target.closest('[data-x]')) { m.remove(); return; }
+    const probe = e.target.closest('[data-probe]');
+    if (probe) { e.stopPropagation(); try { await speak(lang === 'de' ? 'Hallo, so klinge ich.' : 'Hello, this is how I sound.', { provider: 'edge', voiceName: probe.dataset.probe, rate: 1, pitch: 1 }, lang); } catch { toast('Probe nicht möglich'); } return; }
+    const pick = e.target.closest('[data-pick]');
+    if (pick) {
+      m.remove();
+      updateProfile(profile.id, { voice: { ...(profile.voice || { provider: 'edge', rate: 1, pitch: 1 }), voiceName: pick.dataset.pick } });
+      toast('Stimme gespeichert'); renderHeader();
+    }
+  });
+  m.querySelector('#vs-autoread').onchange = (e) => { updateProfile(profile.id, { voice: { ...(profile.voice || {}), autoRead: e.target.checked, autoReadSet: true } }); toast(e.target.checked ? 'Vorlesen an' : 'Vorlesen aus'); };
+}
 async function chooseChatModel(conv) {
   const id = await pickModel({ title: 'Modell für diesen Chat', current: conv.model || '' });
   if (id === null) return;

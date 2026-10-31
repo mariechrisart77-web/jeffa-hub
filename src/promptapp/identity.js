@@ -147,9 +147,9 @@ export function collectIdentitySegs(profile = {}, resolved = {}, card = null) {
 
 /** Gender aus persona.gender (bevorzugt) oder look.typ ableiten */
 function genderOf(profile = {}, card = null) {
-  const pg = String(profile.persona?.gender || '').toLowerCase();
-  if (pg === 'male' || pg === 'm') return { noun: 'adult man', pronoun: 'his' };
-  if (pg === 'female' || pg === 'f') return { noun: 'adult woman', pronoun: 'her' };
+  const pg = String(profile.persona?.gender || profile.gender || '').toLowerCase();
+  if (pg === 'male' || pg === 'm' || pg === 'mann') return { noun: 'adult man', pronoun: 'his' };
+  if (pg === 'female' || pg === 'f' || pg === 'w' || pg === 'frau') return { noun: 'adult woman', pronoun: 'her' };
   const t = String(profile.persona?.look?.typ || profile.look?.typ || card?.data?.extensions?.jeffa?.look?.typ || '').toLowerCase();
   if (/\bmann\b|\bman\b|\bmale\b|\bherr\b/.test(t)) return { noun: 'adult man', pronoun: 'his' };
   return { noun: 'adult woman', pronoun: 'her' };
