@@ -68,10 +68,33 @@ const KIND_RX = [
 
 const OTHER = { kind: 'other', label: 'Outfit', parts: [], activeTags: [], activeNegatives: [], checkLabel: 'other', topRequired: false, nudeExpected: false };
 
+const NUDE_ONLY_RX = /\b(nude|naked|nackt|topless|oben ohne|ohne kleidung|no clothes)\b/i;
+const GARMENT_RX = /\b(bikini|dress|kleid|shirt|bluse|blouse|skirt|rock|jeans|hose|pants|trousers|short|hoodie|sweater|pullover|jacket|coat|mantel|suit|anzug|uniform|jumpsuit|pyjama|bathrobe|bademantel|swimsuit|badeanzug|one-piece)\b/i;
+
+/** v83: Nackt-Segmente alleinstehend entfernen, wenn ein echtes Kleidungsstück vorhanden ist. */
+export function reconcileOutfitNudity(text) {
+  const segs = String(text || '').split(/\s*,\s*/).map((s) => s.trim()).filter(Boolean);
+  if (!segs.length) return { text: '', removed: [] };
+  const hasGarment = segs.some((s) => GARMENT_RX.test(s) && !NUDE_ONLY_RX.test(s.replace(GARMENT_RX, '')));
+  if (!hasGarment) return { text: segs.join(', '), removed: [] };
+  const kept = [], removed = [];
+  for (const s of segs) {
+    if (NUDE_ONLY_RX.test(s) && !GARMENT_RX.test(s)) removed.push(s);
+    else kept.push(s);
+  }
+  return { text: kept.join(', '), removed };
+}
+
 export function classifyOutfit(text) {
-  const t = String(text || '');
-  if (!t.trim()) return { ...OTHER };
-  for (const [rx, kind] of KIND_RX) if (rx.test(t)) return { ...GARMENT_SPECS[kind], kind };
+  const raw = String(text || '');
+  if (!raw.trim()) return { ...OTHER };
+  // v83: nude+bikini-Widerspruch → Kleidungsstück gewinnt (kein 'nude'-Kind)
+  const rec = reconcileOutfitNudity(raw);
+  const t = rec.text || raw;
+  for (const [rx, kind] of KIND_RX) {
+    if (kind === 'nude' && rec.removed.length) continue;
+    if (rx.test(t)) return { ...GARMENT_SPECS[kind], kind };
+  }
   return { ...OTHER };
 }
 
@@ -80,6 +103,15 @@ export function specFor(outfitText, presetId = '') {
   if (!outfitText && !presetId) return null;
   if (presetId && GARMENT_SPECS[presetId]) return { ...GARMENT_SPECS[presetId] };
   return classifyOutfit(outfitText);
+}
+
+/** v83: Garment-Tags, die schon (sinngleich) im Outfit stehen, NICHT doppelt anhängen. */
+export function dedupeGarmentTags(tags = [], outfit = '') {
+  const o = low(outfit);
+  return tags.filter((t) => {
+    const parts = String(t).split(/,\s*/).map((x) => low(x).replace(/[^a-z0-9 ]+/g, ' ').trim()).filter(Boolean);
+    return !parts.every((p) => p && o.includes(p));
+  });
 }
 
 /** Tags+Negatives nur wenn aktiv (das ist der Kern der v74-Regel) */

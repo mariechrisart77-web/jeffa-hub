@@ -1,6 +1,7 @@
 // v69 Prompt-Paket: EIN serverseitiger Bild-Plan (pure, node-testbar). Chat und Bild-App senden nur Profil, Verlauf und Dropdowns.
 // Reihenfolge: Altersschutz → Ebenen → Story-Zustand → Composer (JSON) → Dropdown-Vorrang → Abgleich (v69) → Personenfilter → Prompt → Seed → Modell.
 import { detectPoseDetails } from './promptapp/scene-time.js';
+import { detectScene as detectSceneV83 } from './promptapp/scene-map.js';
 import { resolveLayers, minorRisk, scrubYouth, youthRisk, dedupeSeg, pickVariation, routeModel, buildRulePrompt, STYLE, NEG_SINGLE, vibeCues, useScene, stripConflicts, VARIATIONS, normQuality, fsk18Family } from './imgsvc-core.js';
 import { abgleich } from './imgsvc-abgleich.js';
 import { normalizeIntensity, intensityDefaults, intensityPose, poseForKind, poseKindOf, FRAMING, sharpTags } from './imgsvc-formulate.js';
@@ -73,7 +74,7 @@ export function composerInput(L, prev, msgs) {
     L.fixed && 'FIXED by the user (keep exactly): ' + L.fixed,
     L.outfit && 'Outfit preset (use unless the chat says otherwise): ' + L.outfit,
     L.defaults?.place && 'Default place if the story has none: ' + L.defaults.place,
-    L.scene && 'Picture request: ' + L.scene,
+    L.scene && 'Picture request (highest priority for place, action and pose – overrides the story state and presets): ' + L.scene,
     L.corrections?.positive && 'Feedback to respect: ' + L.corrections.positive,
     'LATEST MESSAGES (oldest first):', ...msgs.map((m) => `${m.role}: ${String(m.content).slice(0, 700)}`)].filter(Boolean).join('\n').slice(0, 5000);
 }
@@ -112,10 +113,15 @@ const first = (list, t) => { for (const [rx, v] of list) if (rx.test(t)) return 
 
 const low70 = (t) => String(t || '').toLowerCase().trim();
 export function emptyStory() { return { location: '', time_of_day: '', present: [], outfit: '', outfit_state: '', action: '', pose: '' }; }
+const hasOwnKey = (o, k) => Object.prototype.hasOwnProperty.call(o || {}, k);
 /** leere Felder behalten den alten Wert; 'dry' setzt den Zustand zurück */
 export function mergeStory(prev, next) {
   const p = { ...emptyStory(), ...(prev || {}) }, n = next || {}, out = { ...p };
-  for (const k of ['location', 'time_of_day', 'outfit', 'action', 'pose']) if (typeof n[k] === 'string' && n[k].trim()) out[k] = scrubYouth(n[k].trim()).slice(0, 200);
+  // v83: echte Leerstrings löschen alte Werte (Ortswechsel darf action/pose verwerfen); undefined lässt den Wert stehen
+  for (const k of ['location', 'time_of_day', 'outfit', 'action', 'pose']) {
+    if (typeof n[k] === 'string' && n[k].trim()) out[k] = scrubYouth(n[k].trim()).slice(0, 200);
+    else if (typeof n[k] === 'string' && hasOwnKey(n, k) && n[k] === '') out[k] = '';
+  }
   if (typeof n.outfit_state === 'string' && n.outfit_state.trim()) out.outfit_state = /^(dry|none|clean|normal)$/i.test(n.outfit_state.trim()) ? '' : n.outfit_state.trim().toLowerCase().slice(0, 40);
   if (Array.isArray(n.present) && n.present.length) out.present = n.present.map((x) => scrubYouth(String(x)).slice(0, 60)).filter(Boolean).slice(0, 4);
   out.updatedAt = Date.now();
@@ -124,13 +130,21 @@ export function mergeStory(prev, next) {
 /** wendet eine Nachricht auf den Story-Zustand an (Ort, Zeit, Kleidung, Zustand, Pose, Handlung) */
 export function storyStep(prev, text) {
   const t = String(text || ''), n = {};
-  const loc = LOCS.find(([rx]) => rx.test(t)); if (loc) n.location = loc[1];
+  let loc = LOCS.find(([rx]) => rx.test(t));
+  // v83: Fallback über SCENE_MAP, wenn LOCS nichts kennt (z. B. Bibliothek)
+  if (!loc) {
+    const sv = detectSceneV83(t);
+    if (sv) loc = [null, sv.location, sv.scene];
+  }
+  if (loc) n.location = loc[1];
   const tm = first(TIMES, t); if (tm) n.time_of_day = tm;
   const g = t.match(GARMENT_RX); if (g) n.outfit = [g[1] ? COLORS[g[1].toLowerCase()] : '', GARMENTS[g[2].toLowerCase()]].filter(Boolean).join(' ');
   if (DRY.test(t)) n.outfit_state = 'dry'; else if (WET.test(t)) n.outfit_state = 'wet'; else if (TORN.test(t)) n.outfit_state = 'torn';
   if (n.outfit && g && /umgezogen|zieht sich um|changed|anderes|frisch/i.test(t) && !WET.test(t)) n.outfit_state = 'dry';
   const po = first(POSES, t); if (po) n.pose = po;
   const ac = first(ACTIONS, t); n.action = ac || (loc && loc[1] !== prev?.location ? 'arriving' : '');
+  // v83: Ortswechsel → alte Pose verwerfen, wenn die neue Nachricht keine eigene liefert (action wird oben schon auf 'arriving' gesetzt)
+  if (!po && loc && loc[1] && prev && prev.location && low70(prev.location) !== low70(loc[1])) n.pose = '';
   return mergeStory(prev, n);
 }
 export function ruleComposer(L, prevStory, msgs) {
@@ -260,6 +274,10 @@ export async function buildImagePlan({ profile = {}, resolved = {}, card = null,
   const sceneReq = scrubYouth(String(bc.scene || '')).slice(0, 400);
   const L0 = resolveLayers({ profile, resolved: res, card, scene: sceneReq, context: { summary: String(bc.summary || '').slice(0, 800), messages: msgs }, corrections });
   const L = { ...L0, ...useScene(L0, msgs[msgs.length - 1]?.content || sceneReq), vibe: vibeCues(String(profile.traits || '')) };
+  // v83: Wenn die Wunsch-Szene einen Ort nennt, gespeicherten setting:-Fixtext ausblenden (Foto-Override gilt immer).
+  if (sceneReq && detectSceneV83(sceneReq) && !(po && typeof po === 'object' && typeof po.scene === 'string')) {
+    L.fixed = String(L.fixed || '').split('; ').filter((x) => x && !x.startsWith('setting: ')).join('; ');
+  }
   const q0 = String(body.quality || '');
   // v75 (e): explizit = der NUTZER hat im Dropdown ein Modell gewählt (nicht 'auto'/'single'/leer)
   const explicitModel = !!(q0 && !/^(auto|single)$/i.test(q0));
@@ -309,7 +327,10 @@ export async function buildImagePlan({ profile = {}, resolved = {}, card = null,
   }
   if (L.outfit) parts.outfit = L.outfit;
   if (ph.pose) parts.pose = ph.pose; else if (!parts.pose && L.defaults?.pose) parts.pose = L.defaults.pose;
-  if (ph.scene) parts.background = ph.scene;
+  // v83: gespeicherte Dropdown-Szene gilt nur, wenn die Wunsch-Szene keinen Ort nennt; photoOverride.scene gilt immer.
+  const wishHasPlace83 = !!(sceneReq && detectSceneV83(sceneReq));
+  const poScene83 = po && typeof po === 'object' && typeof po.scene === 'string' && po.scene !== '';
+  if (ph.scene && (poScene83 || !wishHasPlace83)) parts.background = ph.scene;
   if (ph.light) parts.lighting = ph.light;
   if (ph.frame) parts.camera = ph.frame;
   if (ph.mood) parts.expression = ph.mood;
@@ -354,11 +375,17 @@ export async function buildImagePlan({ profile = {}, resolved = {}, card = null,
     body: {
       parts: { ...parts },
       seed: Number.isInteger(body.seed) ? body.seed : undefined,
+      wish: sceneReq,
     },
   });
   if (promptPlan.error) return { error: { status: 403, code: promptPlan.error.code, message: promptPlan.error.message } };
+  // v83: Story (zurückgespeichert in KV) auf die aufgelöste Szene aktualisieren
+  if (promptPlan.story) story = { ...story, ...promptPlan.story };
   // Abgleich-Notes zusammenführen
-  const abgleichMerged = Array.from(new Set([...(ab.warnings || []), ...(promptPlan.abgleich || [])]));
+  // v83: EIN Alters-Hinweis – meldet die Prompt-App (Einstellungsfeld-Priorität) schon einen, entfällt der doppelte aus abgleich()
+  const ppAge83 = (promptPlan.abgleich || []).some((w) => /^Alter widersprüchlich/.test(w));
+  const abWarn83 = (ab.warnings || []).filter((w) => !(ppAge83 && /^Alter widersprüchlich/.test(w)));
+  const abgleichMerged = Array.from(new Set([...abWarn83, ...(promptPlan.abgleich || [])]));
   const appParts = { ...parts, ...(promptPlan.parts || {}) };
 
   // Variation: automatische Pose bleibt variabel; Dropdown-Pose → nur Linse

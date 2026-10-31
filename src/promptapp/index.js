@@ -8,6 +8,8 @@ import { makeCheckSpec } from './check-spec.js';
 import { dedupe, dedupeText, dropSegs, low, splitSegs, tidy } from './util.js';
 import { isExplicitAdult, isFsk18Segment, neutralPose, SFW_NEGATIVES, sfwText } from './sfw.js';
 import { storyScene, detectStoryPose, detectScene } from './scene-map.js';
+import { resolveSceneTarget, fitPoseToScene, poseExtras } from './consistency.js';
+import { reconcileOutfitNudity, dedupeGarmentTags } from './garments.js';
 
 const AGE_MSG_DE = 'Profil muss eindeutig erwachsen sein (21+)';
 
@@ -72,7 +74,7 @@ export function guardAdult({ profile = {}, adult = false, ph = {}, notes = [] } 
 }
 
 /** Fachwerk: Dropdown → Story → Story-State → Profil-Default. Liefert parts + deutsche Notes. */
-export function reconcile({ profile = {}, resolved = {}, photoOverride = {}, parts = {}, story = null } = {}) {
+export function reconcile({ profile = {}, resolved = {}, photoOverride = {}, parts = {}, story = null, wish = '', oneTimeScene = '' } = {}) {
   const notes = [];
   const P = { ...(parts || {}) };
   // Dropdown-Werte können in `photoOverride` (Request) ODER in `resolved.photo` (gespeicherte Auswahl) liegen.
@@ -122,8 +124,11 @@ export function reconcile({ profile = {}, resolved = {}, photoOverride = {}, par
   }
 
   // ---------- Szene ----------
+  // v83: Eine gespeicherte Dropdown-Szene gilt NUR, wenn die Wunsch-Szene keinen Ort nennt (Aufgabe 2).
+  // photoOverride.scene (einmalige Auswahl) wird hier weiterhin gesetzt und gewinnt in resolveSceneTarget.
   const ddScene = hasOwn(ph, 'scene') ? str(ph.scene) : '';
-  if (ddScene) {
+  const wishHasPlace = !!detectScene(str(wish));
+  if (ddScene && (str(oneTimeScene) || !wishHasPlace)) {
     const curBg = str(P.background);
     if (curBg && low(curBg) !== low(ddScene) && !low(ddScene).includes(low(curBg))) {
       notes.push(`Szene: Auswahl „${ddScene}“ hat Vorrang vor Story-Ort „${curBg}“`);
@@ -139,7 +144,33 @@ export function reconcile({ profile = {}, resolved = {}, photoOverride = {}, par
   return { parts: P, notes, outfitSource, ddOutfit: ddAuto ? '' : ddRaw };
 }
 
+/** v83: Wunsch-Outfit aus der deutschen Wunsch-Szene (z. B. „im roten Sommerkleid“ → 'red summer dress'). */
+export function wishOutfitFromScene(wish = '') {
+  const m = String(wish).match(/\b(?:im|in(?: einem)?|in der|im)\s+(?:(rot\w*|blau\w*|schwarz\w*|wei\w*|grün\w*|rosa|pink|gelb\w*|braun\w*)\s+)?(sommerkleid|kleid|abendkleid|dirndl|rock|bluse|shirt|t-shirt|tanktop|pullover|mantel|jacke|jeans|short\w*|badeanzug|hosenanzug|jumpsuit)\b/i);
+  if (!m) {
+    const en = String(wish).match(/\b(?:(red|blue|black|white|green|pink|yellow|brown)\s+)?(summer dress|evening dress|dress|skirt|blouse|shirt|t-shirt|tank top|sweater|coat|jacket|jeans|shorts|swimsuit|jumpsuit)\b/i);
+    if (!en) return '';
+    return [en[1] ? en[1].toLowerCase() : '', en[2].toLowerCase()].filter(Boolean).join(' ');
+  }
+  const col = { rot: 'red', rote: 'red', roten: 'red', blau: 'blue', blaue: 'blue', blauen: 'blue', schwarz: 'black', schwarze: 'black', wei: 'white', weiße: 'white', weißen: 'white', grün: 'green', grüne: 'green', rosa: 'pink', pink: 'pink', gelb: 'yellow', gelbe: 'yellow', braun: 'brown', braune: 'brown' };
+  const g = { sommerkleid: 'summer dress', kleid: 'dress', abendkleid: 'evening dress', dirndl: 'dirndl', rock: 'skirt', bluse: 'blouse', shirt: 'shirt', 't-shirt': 't-shirt', tanktop: 'tank top', pullover: 'sweater', mantel: 'coat', jacke: 'jacket', jeans: 'jeans', shorts: 'shorts', badeanzug: 'swimsuit', hosenanzug: 'suit', jumpsuit: 'jumpsuit' };
+  const c = m[1] ? (col[low(m[1]).replace(/[^a-zäöüß]/g, '')] || low(m[1])) : '';
+  return [c, g[low(m[2])] || low(m[2])].filter(Boolean).join(' ');
+}
+
+
 /** Entfernt FSK18-Segmente aus Identität und Parts (nicht-18+-Pfad) – v75: verschärft via SFW-Filter */
+/** v83: Outfit-Segment enthält ein echtes jugendfreies Kleidungsstück? */
+const SFW_GARMENT_RX = /\b(dress|skirt|jeans|trousers|pants|shorts|shirt|t-?shirt|blouse|sweater|pullover|hoodie|cardigan|jacket|coat|blazer|suit|uniform|jumpsuit|pyjamas|pajama|bathrobe|robe|swimsuit|one-piece swimsuit|badeanzug)\b/i;
+const SFW_OUTFIT_BAD_RX = /\b(bikini|latex|lingerie|string|thong|g-string|see-through|sheer|nude|naked|topless|micro)\b/i;
+/** v83: Ist der Text ein echtes jugendfreies Kleidungsstück (ohne FSK18-Anteile)? */
+export function isSfwGarment(text) {
+  const t = String(text || '');
+  if (!SFW_GARMENT_RX.test(t)) return false;
+  if (SFW_OUTFIT_BAD_RX.test(t)) return false;
+  return true;
+}
+
 function stripFsk18(identity, parts, notes, opts = {}) {
   const hit = [];
   const identityOut = splitSegs(identity).filter((s) => {
@@ -233,7 +264,9 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
   }
 
   // 5. Reconcile (Dropdown > Story > State > Default)
-  const rec = reconcile({ profile, resolved: R, photoOverride: ph, parts: partsIn, story: ST });
+  // v83: Wunsch-Szene (Bild-Wunsch des Nutzers) – schlägt Story und gespeicherte Dropdown-Szene
+  const wishScene = str((body && (body.wish || body.sceneReq)) || '');
+  const rec = reconcile({ profile, resolved: R, photoOverride: ph, parts: partsIn, story: ST, wish: wishScene, oneTimeScene: str((photoOverride || {}).scene) });
   for (const n of rec.notes) notes.push(n);
   let parts = rec.parts;
 
@@ -245,22 +278,63 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
   if (!parts.outfit) { parts.outfit = 'simple neutral outfit'; rec.outfitSource = 'generic'; }
 
   // v75: Story-Text aus ALLEN Chat-Nachrichten + Story-Location + Parts
+  // v83: Reihenfolge älteste → neueste: alte Nachrichten, Story-Ort, Composer-Parts, Wunsch-Szene (neueste gewinnt).
   const storySegs = [
+    ...((msgs || []).map((m) => String((m && m.content) || ''))),
+    str(ST.location),
     str(parts.scene),
     str(parts.background),
-    str(ST.location),
-    ...((msgs || []).map((m) => String((m && m.content) || ''))),
+    wishScene,
   ].filter(Boolean);
   const allStoryText = storySegs.join(' ');
-  const ddSceneSet = hasOwn(ph, 'scene') && str(ph.scene) !== '';
+  // v83: Wunsch-Szene + photoOverride haben Vorrang (Aufgabe 2).
+  const target = resolveSceneTarget({
+    wish: wishScene,
+    override: str((photoOverride || {}).scene),
+    savedScene: str((R.photo || {}).scene),
+    parts,
+    story: ST,
+    msgs,
+  });
+  let ddSceneSet = hasOwn(ph, 'scene') && str(ph.scene) !== '' && !target.locked;
   const detected = detectScene(storySegs);
   const storyPose = detectStoryPose(storySegs);
   const storyLooksBedroom = !!detected && /bedroom/i.test(detected.scene);
 
+  // v83 (Aufgabe 2/3): Nennt die Wunsch-Szene eine Haltung („sie steht …“, „sie sitzt im Sand“), schlägt sie die
+  // gespeicherte Dropdown-Pose (eine einmalige Pose-Auswahl photoOverride.pose gewinnt weiterhin).
+  // Im Modus hemmungslos bleiben ortsunabhängige Details der Dropdown-Pose (z. B. „legs spread“) erhalten.
+  const wishPose = wishScene ? detectStoryPose(wishScene) : null;
+  if (wishPose && !str((photoOverride || {}).pose) && low(str(parts.pose)) !== low(wishPose)) {
+    const extras = effectiveAdult ? poseExtras(str(parts.pose)) : [];
+    parts.pose = [wishPose, ...extras].join(', ');
+    notes.push(`Pose aus dem Bild-Wunsch übernommen („${wishPose}“)`);
+  }
+  // v83: „nude“ + Kleidungsstück im selben Outfit → Kleidungsstück gilt (beide Modi)
+  {
+    const nr = reconcileOutfitNudity(str(parts.outfit));
+    if (nr.removed.length) {
+      parts.outfit = nr.text;
+      notes.push(`Kleidung: Widerspruch „${nr.removed.join(' / ')}“ vs. Kleidungsstück – Kleidungsstück gilt`);
+    }
+  }
   // v75 (c): Story-Pose ersetzt gespeicherte/Preset-Pose auch bei 18+, solange das Dropdown keine Pose setzt
   if (effectiveAdult && storyPose && !(hasOwn(ph, 'pose') && str(ph.pose)) && low(str(parts.pose)) !== low(storyPose)) {
     parts.pose = storyPose;
     notes.push(`Pose aus der Story übernommen („${storyPose}“)`);
+  }
+  // v83 (Aufgabe 3): Pose/Kleidung/Umgebung gegen die aufgelöste Szene abgleichen – in BEIDEN Modi.
+  {
+    const poseFit = fitPoseToScene({
+      pose: str(parts.pose),
+      action: str(parts.action),
+      location: target.location || (detected && detected.location) || '',
+      sceneText: [target.scene, str(parts.background), str(parts.scene)].filter(Boolean).join(', '),
+      adult: effectiveAdult,
+    });
+    if (poseFit.pose !== str(parts.pose)) parts.pose = poseFit.pose;
+    if (poseFit.action !== str(parts.action)) parts.action = poseFit.action;
+    for (const n of poseFit.notes) notes.push(n);
   }
   // 7. Nicht-18+: FSK18-Details aus Identität/Parts entfernen
   if (!effectiveAdult) {
@@ -278,27 +352,57 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
     } else if (/\bleds?\s+spread|spread\s+legs\b/i.test(poseText)) {
       parts.pose = (detected && detected.pose) || neutralPose(str(parts.scene) + ' ' + str(parts.background));
       notes.push('FSK18-Pose auf neutralen Stand/Sitz reduziert (Modus jugendfrei)');
+    } else if (detected && poseText && low(poseText) !== low(detected.pose || '') && /\b(bed|bett|schlafzimmer)\b/i.test(poseText) && !/\b(bed|bett|schlafzimmer|bedroom)\b/i.test(String(detected.location || detected.scene || ''))) {
+      parts.pose = detected.pose || 'standing naturally, hands relaxed at her sides';
+      notes.push(`Pose an Story-Ort „${detected.location}“ angepasst (nicht Bett)`);
     }
     const stripped = stripFsk18(identity, parts, notes, { allowBed: storyLooksBedroom });
     identity = stripped.identity; parts = stripped.parts;
     parts = applySfwToParts(parts, str(parts.scene) + ' ' + str(parts.background), notes, { allowBed: storyLooksBedroom });
-    if (!parts.outfit || !String(parts.outfit).trim()) parts.outfit = 'casual summer outfit';
+    // v83 (Aufgabe 4): nach dem SFW-Filter muss ein ECHTES jugendfreies Kleidungsstück übrig bleiben.
+    const hadFsk = /\b(bikini|latex|lingerie|nude|naked|topless|micro|string|thong|sideboob|underboob|bust)\b/i.test(String(rec.ddOutfit || '') + ' ' + String((R.photo || {}).outfit || '') + ' ' + String((photoOverride || {}).outfit || ''));
+    const keptSegs = splitSegs(parts.outfit).filter((s) => SFW_GARMENT_RX.test(s) && !SFW_OUTFIT_BAD_RX.test(s));
+    if (!keptSegs.length) {
+      let repl = '', src = '';
+      const wishOutfit = wishOutfitFromScene(wishScene);
+      if (wishOutfit) { repl = wishOutfit; src = 'Wunsch-Szene'; }
+      else if (str(ST.outfit) && isSfwGarment(str(ST.outfit))) { repl = str(ST.outfit); src = 'Story'; }
+      else if (str((R.defaults || {}).outfit) && isSfwGarment(str(R.defaults.outfit))) { repl = str(R.defaults.outfit); src = 'Profil-Default'; }
+      else {
+        const scn = low(String(target.location || '') + ' ' + String(target.scene || ''));
+        if (/beach|strand|sand/.test(scn)) repl = 'light summer dress';
+        else if (/office|büro|desk/.test(scn)) repl = 'smart blouse and skirt';
+        else repl = 'casual summer outfit';
+        src = 'szenenpassender Standard';
+      }
+      parts.outfit = repl;
+      const why = hadFsk ? 'Auswahl im Modus jugendfrei komplett gefiltert' : 'nach dem FSK18-Filter kein echtes Kleidungsstück';
+      notes.push(`Kleidung: ${why} – verwendet: „${repl}“ (${src})`);
+    } else {
+      // echtes Kleidungsstück vorhanden → nur FSK18-Reste entfernen, beschreibende Segmente bleiben
+      const clean = splitSegs(parts.outfit).filter((s) => !SFW_OUTFIT_BAD_RX.test(s));
+      if (clean.length !== splitSegs(parts.outfit).length) parts.outfit = clean.join(', ');
+    }
   }
 
   // 8. Garment-Spec + aktive Bits (nur wenn aktiv)
   const garment = specFor(parts.outfit);
   const bits = activeGarmentBits(garment);
-  const garmentTags = garment ? bits.tags.slice() : [];
+  // v83: Tags, die sinngleich schon im Outfit stehen, nicht doppelt anhängen
+  const garmentTags = garment ? dedupeGarmentTags(bits.tags.slice(), parts.outfit) : [];
 
   // 9. Prompt bauen
   const framing = framingFor(parts.camera || '');
   const outfitText = renderOutfitPhrase(parts.outfit, parts.outfit_state);
   // v75 (c): Story-Szene aus ALLEN Story-Texten; Dropdown-Szene gewinnt immer
-  let sceneText = [str(parts.scene), str(parts.background)].filter(Boolean).join(', ');
-  if (ddSceneSet) {
+  // v83: aufgelöste Szene hat Vorrang; ein roher Chat-Satz darf NICHT als Szene im Prompt landen.
+  let sceneText = target.scene || [str(parts.scene), str(parts.background)].filter(Boolean).join(', ');
+  if (target.locked && target.scene) {
+    sceneText = target.scene;
+  } else if (ddSceneSet) {
     // Dropdown hat die Szene gesetzt – Story-Szene wird NICHT injiziert
     sceneText = [str(parts.background), str(parts.scene)].filter(Boolean).join(', ');
-  } else if (detected) {
+  } else if (detected && !target.scene) {
     const storySceneText = effectiveAdult ? detected.scene : sfwText(detected.scene, '', { allowBed: storyLooksBedroom });
     if (storySceneText && !low(sceneText).includes(low(storySceneText))) {
       sceneText = storySceneText;
@@ -328,10 +432,20 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
     profile,
   });
 
-  // v75: SFW-Negatives für nicht-adulte Profile
-  const finalNegative = !effectiveAdult
-    ? [formatOut.negative, SFW_NEGATIVES].filter(Boolean).join(', ')
-    : formatOut.negative;
+  // v75: SFW-Negatives für nicht-adulte Profile (v83: NUR wenn effectiveAdult === false – hemmungslos bleibt ungefiltert)
+  const finalNegative = effectiveAdult
+    ? formatOut.negative
+    : [formatOut.negative, SFW_NEGATIVES].filter(Boolean).join(', ');
+
+  // v83: Story-Ort auf die aufgelöste Szene aktualisieren (wird in KV gespeichert).
+  const storyOut = story ? { ...story } : { ...story };
+  if (target.location) {
+    if (story && target.prevLocation && low(target.prevLocation) !== low(target.location) && !str(target.pose)) {
+      storyOut.action = '';
+      storyOut.pose = '';
+    }
+    storyOut.location = target.location;
+  }
 
   // 10. CheckSpec
   const checkSpec = makeCheckSpec({ framing, garment, sceneText });
@@ -340,7 +454,7 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
     prompt: formatOut.prompt,
     negative: finalNegative,
     parts: { ...parts, story: undefined },
-    story: story || null,
+    story: (target.location || target.scene) ? storyOut : (story || null),
     seed: body && Number.isInteger(body.seed) ? body.seed : 1,
     model,
     quality,
@@ -358,4 +472,6 @@ export { makeCheckSpec };
 export { dedupeText, dropSegs, CLOTHING_RX };
 export { isFsk18Segment, neutralPose, SFW_NEGATIVES, sfwText } from './sfw.js';
 export { storyScene, detectScene, detectStoryPose } from './scene-map.js';
+export { resolveSceneTarget, fitPoseToScene } from './consistency.js';
+export { reconcileIdentitySegs } from './reconcile-identity.js';
 export { isCleanIdentityFragment, isGermanFragment } from './decheck.js';

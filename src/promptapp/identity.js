@@ -1,6 +1,7 @@
 // v74 Identität: aus JEDEM Profil (persona.look, figur, details, card-look, age) einen kompakten,
 // konsistenten englischen Identitätsblock bauen. KEINE Kleidungs-Wörter; die gehen in den Default-Outfit-Kandidaten.
 import { deToEn, dedupe, splitSegs, tidy, low } from './util.js';
+import { reconcileIdentitySegs } from './reconcile-identity.js';
 import { isCleanIdentityFragment, isGermanFragment, isBogusAge, extractHairFromGerman } from './decheck.js';
 
 /** Wörter, die Kleidung beschreiben – dürfen NIE im Identitätsblock landen */
@@ -181,9 +182,14 @@ export function buildIdentity({ profile = {}, resolved = {}, card = null, adult 
   const notes = [];
   const { age, note: ageNote } = resolveAge(profile, resolved);
   if (ageNote) notes.push(ageNote);
+  // v83: EIN Wert pro Merkmal (Alter, Haarfarbe, Hautton, Größe, Oberweite) – Einstellungsfeld vor Freitext.
+  const fig83 = profile.persona?.figur || profile.figur || card?.data?.extensions?.jeffa?.figur || {};
+  const fieldSegs83 = figureText(fig83, String((profile.persona?.look || profile.look || {}).statur || '').trim(), profile.persona?.model || profile.model || '');
+  const rec = reconcileIdentitySegs(collectIdentitySegs(profile, resolved, card), { profile, card, age: Math.max(21, +age || 21), fieldSegs: fieldSegs83 });
+  for (const n of rec.notes) notes.push(n);
   const { noun } = genderOf(profile, card);
   // v78: Alters-Optik – immer "looks exactly N years old" (N >= 21)
-  const segs = collectIdentitySegs(profile, resolved, card);
+  const segs = rec.segs;
 
   // nicht-18+-Profile: FSK18-Merkmale aus der Identität entfernen
   const isAdultProfile = profile.adult === true || profile.fsk === true || profile.fsk18 === true;
@@ -203,7 +209,7 @@ export function buildIdentity({ profile = {}, resolved = {}, card = null, adult 
   const picked = new Set([low(lines[0])]);
   // v75: mittelalterliche Floskel vermeiden, wenn numerisches Alter gewählt wurde
   const hasNumericAge = /^\d+$/.test(String(age));
-  // v75: Skin-Konflikt – "fair glowing skin" vs. "tanned skin"; explizite Skin-Angabe gewinnt
+  // v75: Skin-Konflikt – "fair glowing skin" vs. "tanned skin" (v83: Feld-Sieger schon in reconcileIdentitySegs)
   const skinTexts = buckets.skin.slice();
   const winningSkin = skinTexts.find((s) => /tanned/i.test(s)) ||
     skinTexts.find((s) => /\bfair\b/i.test(s)) ||

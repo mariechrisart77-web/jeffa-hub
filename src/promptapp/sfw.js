@@ -26,6 +26,9 @@ const FSK18_PHRASES = [
   'knotted at hips', 'single strings', 'tiny triangle', 'tiny string',
   'minuscule triangle', 'crisp fabric detail', 'glossy latex', 'latex sheen',
   'sharp focus on skin', 'right between legs', 'inner thighs',
+  // v83: typische Rest-Phrasen aus gefilterten Outfit-Texten
+  'skimpy', 'barely concealed', 'barely covering', 'through the thin fabric', 'distinct bumps',
+  'string bottom', 'tie-side', 'v-front', 'stretched taut', 'exposed', 'wet-look', 'glossy reflections',
 ];
 // v75: BETT-Begriffe – nur entfernen, wenn die Szene KEIN Schlafzimmer ist (allowBed = true lässt sie stehen)
 const BED_PHRASES = ['on the edge of the bed', 'at the edge of the bed', 'edge of the bed', 'lying on the bed', 'the bed', 'on the bed', 'in bed', 'on bed', 'bed', 'bedroom', 'hotel room with a large bed'];

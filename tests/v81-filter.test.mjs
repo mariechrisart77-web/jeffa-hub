@@ -38,8 +38,9 @@ test('v81 (e) buildIdentity behaelt FSK18-Merkmale bei adult:true trotz profile.
   const resolved = { identity: 'adult woman, full D-cup bust, nipple piercing' };
   const on = buildIdentity({ profile, resolved, adult: true });
   const off = buildIdentity({ profile, resolved, adult: false });
-  assert.ok(/full D-cup bust|nipple/i.test(on.identity), on.identity);
-  assert.ok(!/full D-cup bust|nipple/i.test(off.identity), off.identity);
+  // v83: Einstellungsfeld (oberweite 6 → F-cup) gewinnt gegen Freitext „full D-cup“ – FSK18-Merkmal bleibt im Adult-Modus
+  assert.ok(/F-cup bust|full D-cup bust|nipple/i.test(on.identity), on.identity);
+  assert.ok(!/F-cup bust|full D-cup bust|nipple/i.test(off.identity), off.identity);
   assert.ok(on.identity.length >= off.identity.length);
 });
 
