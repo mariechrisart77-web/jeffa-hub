@@ -11,7 +11,8 @@ export function costOf(mode, quality, panels = 1, adult = false) {
     single: 0.01,
     spar: 0.01,
     mittel: 0.02,
-    qualitaet: 0.04
+    qualitaet: 0.04,
+    runware: 0.002
   };
   const costPerImage = baseCosts[quality] || 0.01;
   let multiplier = 1;
@@ -28,7 +29,7 @@ export function buildPreviewBody(state) {
 }
 
 export function buildBody(state) {
-  const { mode, profile, style, quality, seed, scene, adult, ownScene, panels, format, messages, conversationId } = state;
+  const { mode, profile, style, quality, seed, scene, adult, ownScene, panels, format, messages, conversationId, composerModel, mix, timeOfDay, timePhrase } = state;
   const dims = FORMATS[format] || FORMATS.hoch;
 
   if (profile && profile !== 'none') {
@@ -45,6 +46,9 @@ export function buildBody(state) {
         messages: Array.isArray(messages) ? messages.slice(-6).map((m) => ({ role: m.role, content: String(m.content || ''), generated: !!m.generated })) : undefined
       }
     };
+    if (composerModel) body.composerModel = composerModel;
+    if (timeOfDay) body.timeOfDay = timeOfDay; // v85 (19): Tageszeit-Wahl (sonst automatisch aus dem Chat)
+    if (mix && style !== 'comicpage') body.mix = { bg: mix.bg, fg: mix.fg };
     if (mode === 'comic') {
       body._mode = 'comic';
       body._panels = panels || 2;
@@ -53,6 +57,7 @@ export function buildBody(state) {
     return body;
   } else {
     let prompt = ownScene || scene;
+    if (timePhrase) prompt += ', ' + timePhrase; // v85 (19)
     if (style && style !== 'real') {
       const styleMap = {
         anime: ' in anime style',

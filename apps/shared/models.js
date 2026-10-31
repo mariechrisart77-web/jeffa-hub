@@ -18,11 +18,14 @@ export const MODELS = [
   { id: 'venice:deepseek-v4-1-flash-uncensored', label: 'DeepSeek V4.1 Flash Uncensored (Venice)', desc: 'Venice · unzensiert, klug, bestes Spanisch · ~0,0015 $/Nachricht (0,33/1,32 $ pro Mio)' },
   { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite', desc: 'Google · schnell, zuverlässig, zensiert · ~0,0003 $/Nachricht' },
   { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', desc: 'Google · klüger, zensiert · ~0,0006 $/Nachricht' },
+  { id: 'grok-4.3', label: 'Grok 4.3 (xAI)', desc: 'xAI (eigener Key im Tresor) · günstig, schnell · ~0,002 $/Nachricht (1,25/2,5 $ pro Mio) · ohne Key übersprungen' },
+  { id: 'grok-4.20-0309-non-reasoning', label: 'Grok 4.20 (xAI)', desc: 'xAI (eigener Key) · ohne Denkpause · ~0,002 $/Nachricht' },
+  { id: 'grok-4.7', label: 'Grok 4.7 (xAI)', desc: 'xAI (eigener Key) · stärkstes Grok-Modell · ~0,008 $/Nachricht (2/6 $ pro Mio)' },
 ];
 /** v78: kostenlos = OpenRouter :free, auto:, Groq/Mistral-Gratis-Kontingent. */
 export const isFree = (id) => /:free$/.test(id || '') || /^auto:/.test(id || '') || /^(groq|mistral):/.test(id || '');
 /** v79: Anbieter mit eigenem Key/Volumen (Secrets VENICE_API_KEY, GEMINI_API_KEY, LUMIAROUTER_API_KEY, GROQ_API_KEY) – kostet wenig, darf ohne Freigabe normal in der Kette stehen (Preis steht dabei). */
-export const hasOwnKey = (id) => /^(venice|gemini|lumia|groq:)/.test(id || '');
+export const hasOwnKey = (id) => /^(venice|gemini|lumia|groq:|grok-)/.test(id || '');
 /** v79: Freigabe nötig nur für bezahlte Modelle von Anbietern OHNE eigenen Key/Volumen (z. B. bezahlte OpenRouter-Modelle). */
 export const needsApproval = (id) => !isFree(id) && !hasOwnKey(id);
 const _info = (id) => MODELS.find(m => m.id === id) || { id, label: id, desc: 'eigene ID' };

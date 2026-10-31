@@ -13,7 +13,7 @@ test('sliders show German words, not numbers', () => {
 });
 test('Knappheit labels: 10 German steps from Normal to Micro', () => {
   const s = src('photoopts.js'); assert.match(s, /KNAPP_LABELS = \['Normal.*'Micro, maximal knapp, viel Sideboob und Underboob – Brustwarzen und Klitoris werden nicht mal mehr ganz verdeckt'\]/);
-  assert.match(src('chat.js'), /KNAPP_LABELS\[/);
+  assert.match(src('chat.js') + src('chat-photo.js'), /KNAPP_LABELS\[/); // v85: Foto-Menü in chat-photo.js
 });
 test('bust = cup sizes A..G with fixed wording', () => {
   const p = src('profiles.js'); assert.match(p, /BUST_EN = \['small A-cup bust'.*'huge G-cup bust'\]/);

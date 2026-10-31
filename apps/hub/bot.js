@@ -2,6 +2,7 @@
 // AES-256-GCM, key = PBKDF2-SHA256(channel password, random salt, 600000). Server/webhook only see ciphertext / job ref.
 // Channel passwords: in memory while unlocked; optionally remembered on this device, encrypted under a non-extractable IndexedDB key (shared/botvault.js), read only after PIN/Face ID admin unlock. Never sent.
 import { api } from './shared/api.js';
+import { getModuleBody } from './shared/module-models.js';
 import { ensureAdmin } from './shared/auth.js';
 import { setupTyping } from './shared/typing.js';
 import { savePass, loadPass, forgetPass } from './shared/botvault.js';
@@ -207,7 +208,7 @@ async function openAtt(btn) {
 const FORWARD = /\b(du|dich|dir|dein\w*|ihr|euch|bot|grok|helfer|admin|agent\w*|assistent\w*|app|jeffa|auftrag|aufgabe\w*|mach\w*|kannst|könntest|erledig\w*|wer bist|weiter|nochmal|vorhin|oben|dies\w*|ok|okay|ja|nein|danke)\b/i;
 async function triage(text) {
   if (FORWARD.test(text) || text.length > 160) return null;
-  const r = await api('/api/chat', { method: 'POST', body: { model: 'gemini-3.5-flash-lite', stream: false, memory: false,
+  const r = await api('/api/chat', { method: 'POST', body: { model: 'gemini-3.5-flash-lite', ...getModuleBody('bot_triage'), stream: false, memory: false,
     system: 'Du bist ein Filter vor einem persönlichen Agenten (Grok Bot). Beantworte DIREKT nur völlig triviale, für sich stehende Fragen: Begrüßung ohne weitere Frage, Uhrzeit/Datum, einfache Fakten oder Definitionen, einfache Rechen- oder Übersetzungsfragen. Alles andere geht an den BOT: alles, was den Bot/Agenten anspricht oder nach ihm fragt (Grok Bot, Helfer, Admin, wer antwortet), alles zur App, Aufgaben, Aktionen, persönliche Daten, Rückfragen oder Bezug auf das bisherige Gespräch, und alles, wenn du unsicher bist. Gib dich NIE als Assistent, Bot oder Agent aus und sprich nie über dich selbst. Antworte NUR mit JSON {"route":"direct"|"bot","answer":"bei direct: kurze Antwort auf Deutsch, sonst leer"}.',
     messages: [{ role: 'user', content: text }] } });
   const m = String(r.reply || '').match(/\{[\s\S]*\}/); let o; try { o = JSON.parse(m[0]); } catch { return null; }
@@ -291,7 +292,7 @@ function renderTalk(el) {
   el.querySelector('#t-start').onclick = () => runTalk(el, speakers(), parts);
 }
 async function geminiTurn(task) {
-  const r = await api('/api/chat', { method: 'POST', body: { model: 'gemini-3.5-flash-lite', stream: false, memory: false,
+  const r = await api('/api/chat', { method: 'POST', body: { model: 'gemini-3.5-flash-lite', ...getModuleBody('bot_turn'), stream: false, memory: false,
     system: 'Du bist ✨ Gemini, Teilnehmer in einem moderierten Gruppengespräch mit zwei Grok-Bot-Assistenten (Admin und Helfer). Antworte auf Deutsch, konkret, max. 150 Wörter, ohne Höflichkeitsfloskeln.',
     messages: [{ role: 'user', content: task }] } });
   return String(r.reply || '').trim();
@@ -300,7 +301,7 @@ const words = s => new Set(String(s).toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) |
 const similar = (a, b) => { const A = words(a), B = words(b); if (!A.size || !B.size) return 0; let n = 0; A.forEach(w => B.has(w) && n++); return n / Math.min(A.size, B.size); };
 async function moderate(topic, log, next, other, turn, max) {
   const hist = log.map(m => `${m.who}: ${m.text}`).join('\n').slice(-6000);
-  const r = await api('/api/chat', { method: 'POST', body: { model: 'gemini-3.5-flash-lite', stream: false, memory: false,
+  const r = await api('/api/chat', { method: 'POST', body: { model: 'gemini-3.5-flash-lite', ...getModuleBody('bot_moderate'), stream: false, memory: false,
     system: 'Du moderierst ein Gruppengespräch zwischen KI-Assistenten (Admin, Helfer, Gemini). Ziel: Das Thema des Nutzers voranbringen. Regeln: Keine Höflichkeits-Pingpongs (Danken, Bestätigen, Wiederholen ohne neue Information). Wenn das Ziel erreicht ist, sich etwas wiederholt oder nichts Neues mehr kommt: beenden. Antworte NUR mit JSON {"action":"continue"|"stop","instruction":"kurze konkrete Anweisung für den nächsten Sprecher","reason":"kurz"}.',
     messages: [{ role: 'user', content: `Thema/Ziel: ${topic}\nRunde ${turn + 1} von ${max}. Nächster Sprecher: ${next}, Gesprächspartner: ${other}.\nBisheriger Verlauf:\n${hist || '(noch leer)'}` }] } });
   const m = String(r.reply || '').match(/\{[\s\S]*\}/); try { return JSON.parse(m[0]); } catch { return { action: 'continue', instruction: 'Bring einen neuen, konkreten Beitrag zum Thema.' }; }

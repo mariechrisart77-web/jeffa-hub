@@ -23,9 +23,16 @@ import { isAdult } from './shared/fsk.js';
 import { personaChatText } from './shared/persona-terms.js';
 import { styleFor } from './styles.js';
 import { getMe } from './me-data.js';
-import { photoFragments, autoPhoto, QUALITY, optionsHtml, KNAPP_LABELS, SFW_DIRECTIONS } from './photoopts.js';
-import { resolveChain, getPaidAllowed, needsApproval, pickModel, modelLabel, getImageStyle, getImageOpt } from './shared/models.js';
+import { photoFragments, autoPhoto, QUALITY } from './photoopts.js';
+import { resolveChain, getPaidAllowed, pickModel, modelLabel, getImageStyle, getImageOpt } from './shared/models.js';
 import { imgInfoHtml } from './imginfo.js';
+import { escapeHtml, uid, toast, settingsGet, fileToB64, resizeImage } from './chat-util.js';
+import { toolsWanted, runAgent } from './chat-agent.js';
+import { initPinchZoom, wireReadingArea as wireReadingAreaV85 } from './chat-layout.js';
+import { openPhotoSheet as openPhotoSheetV85, photoOnce, photoLinked } from './chat-photo.js';
+export { initPinchZoom, photoOnce, photoLinked };
+const wireReadingArea = () => wireReadingAreaV85(root, { currentConv, chooseChatModel, openPhotoSheet });
+const openPhotoSheet = () => openPhotoSheetV85(currentConv);
 
 let root;
 let currentConvId = null;
@@ -527,16 +534,6 @@ function attachMessageActions() {
   });
 }
 
-function escapeHtml(s) {
-  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
-function toast(msg) {
-  const c = document.getElementById('toast-container');
-  if (!c) return alert(msg);
-  const el = document.createElement('div'); el.className = 'toast'; el.textContent = msg; c.appendChild(el);
-  setTimeout(() => el.remove(), 3000);
-}
 function currentConv() { return getConversation(currentConvId); }
 
 // ---- public helpers used by profiles/app
@@ -567,19 +564,6 @@ function renderAttachIcons() {
   el.innerHTML = pending.map((a, i) => `<span class="att-pill">${a.type === 'image' ? '🖼' : a.type === 'video' ? '🎬' : '📄'} ${escapeHtml((a.name || '').slice(0, 18))}<button data-i="${i}" aria-label="Entfernen">✕</button></span>`).join('')
     + (secureText ? '<span class="att-pill">🔒 sichere Eingabe<button data-s="1">✕</button></span>' : '');
   el.querySelectorAll('button').forEach(b => b.onclick = () => { if (b.dataset.s) secureText = null; else pending.splice(+b.dataset.i, 1); renderAttachIcons(); });
-}
-function fileToB64(file) {
-  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(file); });
-}
-async function resizeImage(file) {
-  const url = URL.createObjectURL(file);
-  try {
-    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
-    const s = Math.min(1, 1280 / Math.max(img.width, img.height));
-    const c = document.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
-    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-    return c.toDataURL('image/jpeg', 0.85).split(',')[1];
-  } finally { URL.revokeObjectURL(url); }
 }
 function pickFiles(accept, multiple = false, capture = false) {
   const inp = document.createElement('input'); inp.type = 'file';
@@ -916,225 +900,3 @@ async function comicLines(scene) {
 
 
 // ---- In-app AI tools (function calling via /api/agent)
-const TOOL_HINT = /\b(profil|persona|einstell|status|verbrauch|usage|token|kosten|aufgabe|task|kollab|schlüssel|key|tresor|regler|slider|werkzeug)/i;
-function settingsGet() { try { return JSON.parse(localStorage.getItem('jeffa.settings') || '{}'); } catch { return {}; } }
-function toolsWanted(msgs) {
-  const mode = settingsGet().tools || 'auto'; // 'auto' | 'on' | 'off'
-  if (mode === 'off') return false;
-  if (mode === 'on') return true;
-  return TOOL_HINT.test(msgs.at(-1)?.content || '');
-}
-function agentCtx() {
-  const s = settingsGet();
-  return {
-    profiles: getProfiles().map(p => ({ id: p.id, name: p.name, description: (p.description || '').slice(0, 80) })),
-    settings: { encrypt: !!s.encrypt, theme: s.theme || 'dark', tools: s.tools || 'auto', textScale: s.textScale || 1, fsk18: isAdult() },
-  };
-}
-function applyClientTool(name, args) {
-  if (name === 'change_setting') {
-    const allowed = { encrypt: v => v === true || v === 'true' || v === 'an', theme: v => (v === 'light' || v === 'hell') ? 'light' : 'dark' };
-    if (!allowed[args.key]) throw new Error('Diese Einstellung ist nicht per KI änderbar');
-    const s = settingsGet(); s[args.key] = allowed[args.key](args.value);
-    localStorage.setItem('jeffa.settings', JSON.stringify(s));
-    if (args.key === 'theme') document.body.classList.toggle('light-theme', s.theme === 'light');
-    return { [args.key]: s[args.key] };
-  }
-  if (name === 'update_profile') {
-    const id = String(args.id || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 32);
-    if (!id) throw new Error('id fehlt');
-    const patch = {};
-    for (const k of ['name', 'description', 'traits']) if (typeof args[k] === 'string') patch[k] = args[k].slice(0, 500);
-    let p = getProfile(id);
-    if (!p) {
-      const base = structuredClone(getProfile('seraphina') || getActiveProfile());
-      Object.assign(base, { id, name: patch.name || id, avatar: '✨', systemPrompt: '', systemPromptAdult: '', notes: [], adult: false, enabled: true });
-      delete base.persona; // fresh persona, editor fills defaults
-      if (patch.description) base.description = patch.description;
-      if (patch.traits) base.traits = patch.traits;
-      addProfile(base);
-      p = getProfile(id);
-    }
-    if (args.look && typeof args.look === 'object') {
-      const looks = structuredClone(p.looks || {});
-      for (const k of ['kleidung', 'pose', 'umgebung', 'ausdruck', 'stil']) if (typeof args.look[k] === 'string') looks[k] = args.look[k].slice(0, 300);
-      patch.looks = looks;
-    }
-    if (args.sliders && typeof args.sliders === 'object' && p.persona) {
-      const persona = structuredClone(p.persona);
-      for (const [key, val] of Object.entries(args.sliders)) {
-        for (const arr of [persona.temperament || [], persona.gegensaetze || []]) {
-          const sl = arr.find(x => x.id === key || x.left === key || x.right === key);
-          if (sl) sl.value = Math.max(-5, Math.min(5, Number(val) || 0));
-        }
-      }
-      patch.persona = persona;
-    }
-    updateProfile(id, patch);
-    return { updated: id, fields: Object.keys(patch) };
-  }
-  throw new Error('Unbekanntes Werkzeug');
-}
-function confirmTool(c) {
-  return new Promise(resolve => {
-    const m = document.createElement('div'); m.className = 'modal-backdrop';
-    m.innerHTML = `<div class="modal"><h3>KI möchte etwas ändern</h3><p><b>${escapeHtml(c.name)}</b></p><pre class="tool-args">${escapeHtml(JSON.stringify(c.args, null, 1)).slice(0, 1200)}</pre><div class="edit-actions"><button class="btn-sm secondary" data-x>Ablehnen</button><button class="btn-sm" data-ok>Ausführen</button></div></div>`;
-    document.body.appendChild(m);
-    m.querySelector('[data-x]').onclick = () => { m.remove(); resolve(false); };
-    m.querySelector('[data-ok]').onclick = () => { m.remove(); resolve(true); };
-  });
-}
-async function runAgent(conv, a, profile, system, msgs) {
-  const model = (profile.modelChain || []).find(m => /^(gemini|grok|[\w-]+\/)/.test(m) && !m.startsWith('auto:') && (!needsApproval(m) || getPaidAllowed())); // v79: bezahlt nur mit Freigabe
-  let toolResults = [];
-  for (let step = 0; step < 3; step++) {
-    let r;
-    try { r = await api('/api/agent', { method: 'POST', body: { model, paidAllowed: getPaidAllowed(), system: capSystem(system, 3000), messages: msgs, ctx: agentCtx(), toolResults } }); }
-    catch (e) { a.status = 'error'; a.content = `⚠️ ${e.message}`; return; }
-    a.model = (r.model || '') + (r.tools?.length ? ` · 🛠 ${r.tools.join(', ')}` : '');
-    if (!r.confirm) { a.content = r.reply || '…'; return; }
-    const c = r.confirm;
-    if (!(await confirmTool(c))) { toolResults = [...toolResults, { name: c.name, args: c.args, result: { abgelehnt: true } }]; continue; }
-    let result;
-    try {
-      if (c.client) { result = applyClientTool(c.name, c.args); await api('/api/agent/exec', { method: 'POST', body: { name: c.name, args: c.args, clientResult: JSON.stringify(result).slice(0, 300) } }); }
-      else result = (await api('/api/agent/exec', { method: 'POST', body: { name: c.name, args: c.args } })).result;
-    } catch (e) { result = { error: e.status === 401 || e.status === 403 ? 'Admin-Anmeldung nötig (Hub → Tresor)' : e.message }; }
-    toolResults = [...toolResults, { name: c.name, args: c.args, result }];
-  }
-  a.content = a.content || 'Fertig.';
-}
-
-// ---- Pinch-to-zoom for chat text (persisted)
-function applyTextScale(v) { document.documentElement.style.setProperty('--chat-scale', String(v)); }
-export function initPinchZoom(el) {
-  let start = 0, base = 1;
-  const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
-  base = Number(settingsGet().textScale) || 1; applyTextScale(base);
-  el.addEventListener('touchstart', (e) => { if (e.touches.length === 2) { start = dist(e.touches); base = Number(settingsGet().textScale) || 1; } }, { passive: true });
-  el.addEventListener('touchmove', (e) => {
-    if (e.touches.length !== 2 || !start) return;
-    e.preventDefault();
-    const v = Math.max(0.8, Math.min(1.8, Math.round(base * dist(e.touches) / start * 20) / 20));
-    applyTextScale(v); el.dataset.scale = v;
-  }, { passive: false });
-  el.addEventListener('touchend', (e) => {
-    if (start && e.touches.length < 2) { start = 0; const v = Number(el.dataset.scale) || base; const s = settingsGet(); s.textScale = v; localStorage.setItem('jeffa.settings', JSON.stringify(s)); }
-  });
-  // Desktop: ctrl+wheel (trackpad pinch)
-  el.addEventListener('wheel', (e) => {
-    if (!e.ctrlKey) return; e.preventDefault();
-    const s = settingsGet(); const v = Math.max(0.8, Math.min(1.8, Math.round(((Number(s.textScale) || 1) - e.deltaY * 0.01) * 20) / 20));
-    s.textScale = v; localStorage.setItem('jeffa.settings', JSON.stringify(s)); applyTextScale(v);
-  }, { passive: false });
-}
-
-
-// ---- v30: reading area (hide bars on scroll, ⋯ menu, fit 100dvh, 📸 sheet) ----
-function fitChat() {
-  const p = document.getElementById('tab-chat'); if (!p || !p.classList.contains('active')) return;
-  // v54 iOS keyboard: the layout viewport keeps its height while the keyboard is open and Safari scrolls the page,
-  // so the input floated to the top with empty space below. Shrink the app to the visual viewport and undo the page scroll.
-  const vv = window.visualViewport, vh = vv?.height || window.innerHeight;
-  document.documentElement.style.setProperty('--app-h', Math.round(vh) + 'px');
-  if ((vv && vv.offsetTop > 0) || window.scrollY > 0) window.scrollTo(0, 0);
-  const top = Math.max(0, p.getBoundingClientRect().top);
-  p.style.height = Math.max(240, Math.round(vh - top)) + 'px';
-}
-let fitRaf = 0;
-const scheduleFit = () => { cancelAnimationFrame(fitRaf); fitRaf = requestAnimationFrame(fitChat); };
-function setImmersive(on) {
-  if (document.body.classList.contains('chat-immersive') === on) return;
-  document.body.classList.toggle('chat-immersive', on); scheduleFit();
-}
-function wireReadingArea() {
-  const msgs = root.querySelector('#messages'), menu = root.querySelector('#hdr-menu'), more = root.querySelector('#more-btn');
-  let lastY = 0;
-  msgs.addEventListener('scroll', () => {
-    const y = msgs.scrollTop, d = y - lastY; lastY = y;
-    if (Math.abs(d) < 8) return;
-    if (d > 0 && y > 60 && msgs.scrollHeight - msgs.clientHeight - y > 4) setImmersive(true);
-    else if (d < 0) setImmersive(false);
-  }, { passive: true });
-  msgs.addEventListener('click', (e) => { if (!e.target.closest('button,a,img,video,input,select,textarea,summary')) setImmersive(false); });
-  more.onclick = (e) => { e.stopPropagation(); const open = menu.classList.toggle('hidden') === false; more.setAttribute('aria-expanded', String(open)); };
-  document.addEventListener('click', (e) => { if (!menu.classList.contains('hidden') && !e.target.closest('#hdr-menu')) { menu.classList.add('hidden'); more.setAttribute('aria-expanded', 'false'); } });
-  root.querySelector('#cast-btn').addEventListener('click', () => menu.classList.add('hidden'));
-  root.querySelector('#menu-model').onclick = () => { menu.classList.add('hidden'); const c = currentConv(); if (c) chooseChatModel(c); };
-  root.querySelector('#photo-btn').onclick = () => openPhotoSheet();
-  if (!window.__jeffaFit) {
-    window.__jeffaFit = true;
-    addEventListener('resize', scheduleFit); window.visualViewport?.addEventListener('resize', scheduleFit); window.visualViewport?.addEventListener('scroll', scheduleFit);
-    document.addEventListener('focusin', (e) => { if (e.target.matches?.('textarea,input')) { scheduleFit(); setTimeout(scheduleFit, 350); } });
-    document.addEventListener('focusout', () => setTimeout(scheduleFit, 100));
-    const p = document.getElementById('tab-chat');
-    if (p) new MutationObserver(() => { if (!p.classList.contains('active')) document.body.classList.remove('chat-immersive'); scheduleFit(); }).observe(p, { attributes: true, attributeFilter: ['class'] });
-    const ro = window.ResizeObserver ? new ResizeObserver(scheduleFit) : null;
-    document.querySelectorAll('.app-header, nav.tabs-nav, #install-banner').forEach(el => ro?.observe(el));
-  }
-  scheduleFit(); setTimeout(fitChat, 300);
-}
-
-const PHOTO_KEYS = [['outfit', 'Kleidung'], ['koerper', 'Körperdetails (18+)'], ['pose', 'Pose'], ['intensity', 'Pose-Intensität (18+)'], ['scene', 'Umgebung'], ['light', 'Licht'], ['frame', 'Bildausschnitt'], ['mood', 'Stimmung'], ['render', 'Bildstil']];
-// v51: "🔗 Mit Profil verbunden" (default on). Off = changes only for the next photo (photoOnce), the profile stays unchanged.
-export const photoOnce = new Map();
-export const photoLinked = () => { try { return localStorage.getItem('jeffa.photoLinked') !== '0'; } catch { return true; } };
-const setPhotoLinked = (on) => { try { localStorage.setItem('jeffa.photoLinked', on ? '1' : '0'); } catch {} };
-const HINT_LINKED = 'Verbunden: Änderungen werden sofort im Profil gespeichert (wie unter 👤 Profile → Look).';
-const HINT_ONCE = 'Getrennt: gilt nur für das nächste Foto, das Profil bleibt unverändert.';
-function openPhotoSheet() {
-  const conv = currentConv(); if (!conv) return;
-  const profile = getProfile(conv.profileId); if (!profile) return;
-  document.querySelector('.photo-sheet-wrap')?.remove();
-  let linked = photoLinked();
-  const cur = () => linked ? (getProfile(profile.id)?.photo || {}) : (photoOnce.get(profile.id) || { ...(getProfile(profile.id)?.photo || {}) });
-  const w = document.createElement('div'); w.className = 'photo-sheet-wrap';
-  const render = () => {
-    const ph = cur();
-    w.innerHTML = `<div class="photo-sheet ${linked ? 'is-linked' : 'is-once'}" role="dialog" aria-label="Foto-Einstellungen"><div class="sheet-header"><h4>📸 Fotos von ${escapeHtml(profile.name || 'der Figur')}</h4><button class="btn-icon" data-x aria-label="Schließen">✕</button></div>
-    <label class="photo-link-toggle"><input type="checkbox" data-link ${linked ? 'checked' : ''}> <b>🔗 Mit Profil verbunden</b> <span class="photo-link-state">${linked ? 'AN' : 'AUS – nur nächstes Foto'}</span></label>
-    <div class="photo-sheet-grid">${PHOTO_KEYS.filter(([k]) => k === 'scene' || effectiveAdult(conv, profile)).map(([k, t]) => `<label>${t}<select data-k="${k}">${optionsHtml(k, ph[k], effectiveAdult(conv, profile), escapeHtml, profile)}</select></label>`).join('')}</div>
-    ${!effectiveAdult(conv, profile) ? `<label>Richtung<select data-k="direction"><option value="">Automatisch</option>${Object.entries(SFW_DIRECTIONS).map(([id, d]) => `<option value="${id}" ${ph.direction === id ? 'selected' : ''}>${escapeHtml(d.label)}</option>`).join('')}</select></label>` : ''}
-    ${effectiveAdult(conv, profile) ? `<label class="photo-knapp">Knappheit (Sideboob/Underboob): <b data-kv>${KNAPP_LABELS[(ph.knapp || 1) - 1]}</b><input type="range" min="1" max="10" step="1" value="${ph.knapp || 1}" data-knapp style="width:100%"></label>` : ''}
-    <p class="hint" style="margin:6px 0 0">${linked ? HINT_LINKED : HINT_ONCE}</p>
-    <button class="chip" data-preview style="margin-top:8px">🔎 Prompt-Vorschau</button>
-    <div data-preview-out style="display:none;margin-top:8px"></div></div>`;
-    const save = (P) => { if (linked) { updateProfile(profile.id, { photo: P }); toastSaved(w, '✓ Im Profil gespeichert'); } else { photoOnce.set(profile.id, P); toastSaved(w, '✓ Gilt fürs nächste Foto'); } };
-    w.querySelector('[data-link]').onchange = (e) => { linked = e.target.checked; setPhotoLinked(linked); if (linked) photoOnce.delete(profile.id); render(); };
-    w.querySelectorAll('select').forEach(sel => sel.onchange = () => {
-      const P = { ...cur() };
-      if (sel.value) P[sel.dataset.k] = sel.value; else delete P[sel.dataset.k];
-      save(P);
-    });
-    const kr = w.querySelector('[data-knapp]');
-    if (kr) { kr.oninput = () => { w.querySelector('[data-kv]').textContent = KNAPP_LABELS[kr.value - 1]; }; kr.onchange = () => {
-      const P = { ...cur() }; if (+kr.value > 1) P.knapp = +kr.value; else delete P.knapp; save(P); }; }
-    const pv = w.querySelector('[data-preview]');
-    if (pv) pv.onclick = async () => {
-      const out = w.querySelector('[data-preview-out]');
-      out.style.display = 'block';
-      out.innerHTML = '<p class="hint">⏳ Erzeuge Vorschau …</p>';
-      try {
-        const mod = await import('./image-client.js');
-        const body = mod.buildPreviewBody({ api, currentConv, getProfile, getActiveProfile, uid, getImageStyle, getImageOpt, isAdult, photoOnce, photoFragments });
-        if (!body) { out.innerHTML = '<p class="hint">Keine aktive Unterhaltung.</p>'; return; }
-        const r = await api('/api/image', { method: 'POST', body });
-        const notes = Array.isArray(r?.notes) ? r.notes : (Array.isArray(r?.abgleich) ? r.abgleich : []);
-        const check = r?.checkSpec ? JSON.stringify(r.checkSpec, null, 2) : '';
-        out.innerHTML = `<details class="img-info" open><summary>Vorschau – ${escapeHtml(r?.model || '?')} · Seed ${escapeHtml(String(r?.seed ?? '?'))}</summary>`
-          + `<div><strong>Prompt:</strong><pre style="white-space:pre-wrap">${escapeHtml(r?.prompt || '')}</pre></div>`
-          + `<div><strong>Negative:</strong><pre style="white-space:pre-wrap">${escapeHtml(r?.negative || '')}</pre></div>`
-          + (notes.length ? `<div><strong>Abgleich:</strong><ul>${notes.map((n) => `<li>${escapeHtml(String(n))}</li>`).join('')}</ul></div>` : '')
-          + (check ? `<div><strong>Check:</strong><pre style="white-space:pre-wrap">${escapeHtml(check)}</pre></div>` : '')
-          + `</details>`;
-      } catch (e) { out.innerHTML = `<p class="hint">Fehler: ${escapeHtml(e?.message || String(e))}</p>`; }
-    };
-  };
-  render();
-  document.body.appendChild(w);
-  w.addEventListener('click', (e) => { if (e.target === w || e.target.closest('[data-x]')) w.remove(); });
-  // two-way live: profile edits elsewhere (Look tab) refresh the open sheet while linked
-  const onUpd = () => { if (!document.body.contains(w)) { window.removeEventListener('jeffa:profile-updated', onUpd); return; } if (linked && !w.contains(document.activeElement)) render(); };
-  window.addEventListener('jeffa:profile-updated', onUpd);
-}
-function toastSaved(w, msg = '✓ Gespeichert') { const h = w.querySelector('.hint'); if (!h) return; const back = w.querySelector('.is-once') ? HINT_ONCE : HINT_LINKED; h.textContent = msg; clearTimeout(h._t); h._t = setTimeout(() => { h.textContent = back; }, 1500); }

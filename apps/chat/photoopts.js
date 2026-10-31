@@ -1,6 +1,7 @@
 // Per-character photo settings (port of Nachtfalter "Fotos von <Figur>"). Stored in profile.photo; never touches the user's own preset texts.
 // Precedence: a chosen value (not "Frei"/"Passend zur Szene") overrides the scene writer for that aspect; "Frei" leaves it to the scene.
 import { isAdult } from './shared/fsk.js';
+import { sceneMenu, scenePrompt, TIMES_OF_DAY, timeOfDayKey } from './shared/scenes.js';
 
 /** v71: Mikro-Tags für lustify-v8/SDXL – werden bei Micro-Bikini-Outfits angehängt (nur adult) */
 const MICRO_TAGS = 'tiny string micro bikini, minuscule triangles barely the size of a nipple, sideboob, underboob, thong string bottom';
@@ -87,26 +88,15 @@ const KOERPER = [
     ['piercings1', 'Piercings: Brustwarzen-Stege + Christina', 'straight barbell nipple piercings with small silver balls on both nipples, clearly visible as distinct bumps through the thin fabric, plus a christina piercing with silver ball at the top of the pubic mound, visible above the bikini bottom edge', 1],
   ]],
 ];
+// v85 (19): Umgebungen kommen aus der zentralen Liste ./shared/scenes.js (gleiche Liste wie die Bild-App).
 const SCENE = [
   ['', [['', 'Frei (aus der Geschichte)', '']]],
-  ['Nachtfalter-Looks', [
-    ['betonwand', '⭐ Betonwand-Studio – Hauptlook (Latex-Bikini)', 'minimalist photo studio with a raw grey concrete wall, soft studio light', 1],
-    ['parkplatz', 'Parkplatz bei Nacht mit Auto (ohne Kleidung)', 'empty parking lot at night next to a dark sports car, streetlights', 1],
-    ['poolnacht', 'Pool (ohne Kleidung)', 'private pool with turquoise water, sun loungers', 1],
-    ['yoga', 'Yogastudio, Leute im Hintergrund (Latex-Bikini)', 'bright yoga studio with wooden floor, a few people blurred in the background', 1],
-  ]],
-  ['Reise & Luxus', [
-    ['hotel', 'Hotelzimmer mit Blick auf die Stadt', 'luxury hotel room with floor-to-ceiling windows and a city skyline view'],
-    ['strand', 'Strand bei Sonnenuntergang', 'sandy beach at sunset, gentle waves'],
-    ['dach', 'Dachterrasse bei Nacht', 'rooftop terrace at night, city lights below'],
-    ['spa', 'Sauna & Spa', 'wooden sauna and spa area, warm steam'],
-    ['jet', 'Privatjet-Kabine', 'private jet cabin with cream leather seats'],
-    ['weingut', 'Weinberg-Terrasse', 'vineyard terrace in the countryside, rows of vines'],
-  ]],
-  ['Zuhause', [
-    ['loft', 'Loft-Küche am Morgen', 'modern loft kitchen in the morning'],
-    ['schlafzimmer', 'Schlafzimmer, zerwühlte Laken', 'bedroom with rumpled white sheets'],
-  ]],
+  ...sceneMenu(true).map(([g, list]) => [g, list.map((x) => x.adult ? [x.id, x.label, scenePrompt(x), 1] : [x.id, x.label, scenePrompt(x)])]),
+];
+// v85 (19): Tageszeit – '' = automatisch aus dem Chat erkannt; sonst überschreibt sie die Story-Tageszeit und das Licht.
+export const TIME_CATALOG = [
+  ['', [['', 'Automatisch (aus dem Chat)', '']]],
+  ['Tageszeit', TIMES_OF_DAY.map((t) => [t.id, t.label, t.key])],
 ];
 const LIGHT = [
   ['', [['', 'Frei (aus der Szene)', '']]],
@@ -158,7 +148,7 @@ const RENDER = [
 // fixed environment -> default clothing / default pose when those stay "Frei" (Nachtfalter behaviour)
 const SCENE_DEFAULTS = { betonwand: { outfit: 'bikini', pose: 'wand' }, parkplatz: { outfit: 'nackt', pose: 'schulter', time: 'nacht' }, poolnacht: { outfit: 'nackt', pose: 'pool', time: 'nacht' }, yoga: { outfit: 'bikini', pose: 'profil', time: 'tag' } };
 // v78: Szenen-Tageszeit (optional): profile.photo.time -> an out.scene angehängt; ohne time/Default byte-identisch.
-export const SCENE_TIME = { tag: 'daylight', abend: 'evening, warm dim light', nacht: 'night, artificial light' };
+export const SCENE_TIME = { morgen: 'early morning, soft light', tag: 'daylight', abend: 'evening, warm dim light', nacht: 'night, artificial light' };
 // v71: Pose-Intensität (nur adult) – '' = Standard, dezent/offen/stark (stark = exhibitionistisch)
 const INTENSITY = [
   ['', [['', 'Standard – aus der Szene', ''], ['dezent', 'Dezent', ''], ['offen', 'Offen – selbstbewusst & einladend (18+)', '', 1], ['stark', 'Stark exhibitionistisch – zeigt sich offen (18+)', '', 1]]],
@@ -167,7 +157,8 @@ export const CATALOG = { outfit: OUTFIT, koerper: KOERPER, pose: POSE, intensity
 export const RATES = { selten: 0.15, mittel: 0.33, oft: 0.6 };
 export const QUALITY = { spar: { model: '', cost: 0.01 }, mittel: { model: 'qwen-image-2-1-turbo', cost: 0.02 }, qualitaet: { model: 'qwen-image-3', cost: 0.04 } };
 
-const find = (k, id, adult) => { for (const [, opts] of CATALOG[k]) for (const o of opts) if (o[0] === id && (!o[3] || adult)) return o; return null; };
+const catOf = (k) => (k === 'time' ? TIME_CATALOG : CATALOG[k]);
+const find = (k, id, adult) => { for (const [, opts] of catOf(k) || []) for (const o of opts) if (o[0] === id && (!o[3] || adult)) return o; return null; };
 // Old Look-tab presets ("Meine Presets") live in profile.looks.presets[kleidung|pose|umgebung]; chosen in the photo group as "my:<id>".
 export const MY = { outfit: 'kleidung', pose: 'pose', scene: 'umgebung' };
 export const myPreset = (profile, k, id, adult = isAdult()) => {
@@ -197,7 +188,7 @@ export function optionsHtml(k, cur, adult = isAdult(), esc = (s) => s, profile =
   const lg = LEGACY_PROMPTS[curId];
   const legacy = k === 'outfit' && lg && lg.adult && adult
     ? `<optgroup label="Meine Presets"><option value="${esc(curId)}" selected>${esc(lg.label)}</option></optgroup>` : '';
-  const html = CATALOG[k].map(([g, opts]) => {
+  const html = catOf(k).map(([g, opts]) => {
     const o = opts.filter(x => !x[3] || adult).map(x => `<option value="${esc(x[0])}" ${x[0] === curId ? 'selected' : ''}>${esc(x[0] === '' && leg ? 'Wie bisher: ' + leg : x[1])}</option>`).join('');
     return !o ? '' : g ? `<optgroup label="${esc(g)}">${o}</optgroup>` : o;
   }).join('');
@@ -258,6 +249,7 @@ export function photoFragments(profile, adult = isAdult()) {
   if (out.outfit) out.outfit = zweiteiler(out.outfit);
   const tm = SCENE_TIME[p.time] || (p.scene && SCENE_DEFAULTS[p.scene]?.time ? SCENE_TIME[SCENE_DEFAULTS[p.scene].time] : '');
   if (tm && out.scene) out.scene = `${out.scene}, ${tm}`;
+  const tk = timeOfDayKey(p.time); if (tk) out.time = tk; // v85: nur gesetzt, wenn gewählt (sonst Ausgabe unverändert)
   out.negative = negs.join(', ');
   return out;
 }

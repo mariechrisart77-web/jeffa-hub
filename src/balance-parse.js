@@ -63,6 +63,9 @@ export function parseVnaipro(subJson, usageJson) {
 export function parseRunware(json) {
   try {
     const item = Array.isArray(json?.data) ? json.data[0] : null;
+    // v85a: Runware-CLI-Format liefert data[0].balance als Zahl
+    const flatBal = num(item?.balance);
+    if (flatBal != null) return { unit: 'USD', balanceUsd: clamp0(flatBal) };
     const bal = item?.balance;
     if (!bal || typeof bal !== 'object') return null;
     const amount = num(bal.amount);

@@ -1,5 +1,6 @@
 import { imageContext } from './shared/img-context.js';
 import { chatMode, effectiveAdult } from './shared/mode.js';
+import { getModuleChain } from './shared/module-models.js';
 // Image client: sends the chat context to the server-side prompt path (no prompt building here).
 /** v74: Prompt-Vorschau ohne Generierung/Charge (nur `preview:true`). Gleicher Body wie generateImageInChat. */
 export function buildPreviewBody(deps, opts = {}) {
@@ -13,10 +14,14 @@ export function buildPreviewBody(deps, opts = {}) {
   const adult = effectiveAdult(conv, profP);
   const frag = profP ? photoFragments(once ? { ...profP, photo: once } : profP, adult) : {};
   const msgs = imageContext(conv.messages);
+  const composerModel = getModuleChain('image_composer', { adult })[0] || undefined;
+  const mixOpt = getImageOpt('imageMix', null);
+  const mix = mixOpt && mixOpt.on === true && style !== 'comicpage' ? { bg: mixOpt.bg || 'z-image-turbo', fg: adult ? (mixOpt.fgAdult || 'qwen-edit-uncensored') : (mixOpt.fg || 'qwen-image-2-1-turbo-edit') } : undefined;
   return {
     profile: profP?.id,
     conversationId: conv.id || undefined,
     style, adult, mode: chatMode(conv, profP),
+    composerModel, mix,
     quality: quality && quality !== 'single' ? quality : undefined,
     seedMode: opts.seedMode || (opts.seed != null ? 'same' : undefined),
     seed: Number.isInteger(opts.seed) ? opts.seed : (opts.seedMode === 'same' && Number.isInteger(conv.lastSeed) ? conv.lastSeed : undefined),
@@ -45,12 +50,16 @@ export async function generateImageInChat(deps, opts = {}) {
   const adult = effectiveAdult(conv, profP);
   const frag = profP ? photoFragments(once ? { ...profP, photo: once } : profP, adult) : {};
   const msgs = imageContext(conv.messages);
+  const composerModel = getModuleChain('image_composer', { adult })[0] || undefined;
+  const mixOpt = getImageOpt('imageMix', null);
+  const mix = mixOpt && mixOpt.on === true && style !== 'comicpage' ? { bg: mixOpt.bg || 'z-image-turbo', fg: adult ? (mixOpt.fgAdult || 'qwen-edit-uncensored') : (mixOpt.fg || 'qwen-image-2-1-turbo-edit') } : undefined;
   const body = {
     profile: profP?.id,
     conversationId: conv.id || undefined,
     style,
     adult,
     mode: chatMode(conv, profP),
+    composerModel, mix,
     quality: quality && quality !== 'single' ? quality : undefined,
     seedMode: opts.seedMode || (opts.seed != null ? 'same' : undefined),
     seed: Number.isInteger(opts.seed) ? opts.seed : (opts.seedMode === 'same' && Number.isInteger(conv.lastSeed) ? conv.lastSeed : undefined),

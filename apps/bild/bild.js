@@ -1,6 +1,11 @@
 import { parseSessionHash, costOf, buildBody, buildPreviewBody } from './core.js';
+import { getModuleChain } from './shared/module-models.js';
+import { getImageOpt } from './shared/models.js';
 
-const SCENES = ['Café', 'Strand bei Sonnenuntergang', 'Bibliothek', 'Stadtpark', 'Küche', 'Bahnhof', 'Bergsee', 'Neon-Straße bei Nacht'];
+import { sceneMenu, TIMES_OF_DAY, timeOfDayKey, TIME_PHRASE } from './shared/scenes.js';
+// v85 (19): Szenen kommen aus der zentralen Liste (gleiche Liste wie das 📸-Menü im Chat); Wert = deutscher Name wie bisher.
+const SCENE_DEFAULT = 'Café';
+const timeState = () => { const k = timeOfDayKey(document.getElementById('time-select')?.value); return k ? { timeOfDay: k, timePhrase: TIME_PHRASE[k] } : {}; };
 
 let session = localStorage.getItem('jeffa.bild.session') || '';
 let lastSeed = null;
@@ -63,6 +68,14 @@ async function loadProfiles() {
   }
 }
 
+/** v85a: Zusatzfelder für den Profil-Zweig – NUR setzen, wenn eine Wahl/einstellung existiert (Body sonst byte-gleich). */
+function moduleState(adult, style) {
+  const composr = getModuleChain('image_composer', { adult })[0] || undefined;
+  const mo = getImageOpt('imageMix', null);
+  const mix = mo && mo.on === true && style !== 'comicpage' ? { bg: mo.bg || 'z-image-turbo', fg: adult ? (mo.fgAdult || 'qwen-edit-uncensored') : (mo.fg || 'qwen-image-2-1-turbo-edit') } : undefined;
+  return { composerModel: composr, mix };
+}
+
 function updateCostPreview() {
   const mode = document.getElementById('mode-select').value;
   const quality = document.getElementById('quality-select').value;
@@ -121,7 +134,7 @@ async function generate() {
         }
       } catch (e) { console.warn('Konversationen nicht lesbar:', e); }
     }
-    const state = { mode, profile, style, quality, seed, scene, ownScene, adult, panels, format, messages, conversationId, lastSeed };
+    const state = { mode, profile, style, quality, seed, scene, ownScene, adult, panels, format, messages, conversationId, lastSeed, ...moduleState(adult, style), ...timeState() };
     const body = buildBody(state);
     
     if (mode === 'comic') {
@@ -257,7 +270,7 @@ async function previewRequest() {
       }
     }
   } catch (e) { console.warn('Konversationen nicht lesbar:', e); }
-  const state = { mode: 'single', profile, style, quality, seed, scene, ownScene, adult, panels: 2, format, messages, conversationId, lastSeed };
+  const state = { mode: 'single', profile, style, quality, seed, scene, ownScene, adult, panels: 2, format, messages, conversationId, lastSeed, ...moduleState(adult, style), ...timeState() };
   const body = buildPreviewBody(state);
   const out = document.getElementById('preview-output');
   if (out) { out.style.display = 'block'; out.innerHTML = '<p class="hint">⏳ Vorschau …</p>'; }
@@ -287,12 +300,16 @@ export async function init() {
   
   // Populate scene dropdown
   const sceneSelect = document.getElementById('scene-select');
-  SCENES.forEach(s => {
-    const opt = document.createElement('option');
-    opt.value = s;
-    opt.textContent = s;
-    sceneSelect.appendChild(opt);
-  });
+  for (const [group, list] of sceneMenu(false)) {
+    const og = document.createElement('optgroup'); og.label = group;
+    for (const s of list) { const opt = document.createElement('option'); opt.value = s.label; opt.textContent = s.label; og.appendChild(opt); }
+    sceneSelect.appendChild(og);
+  }
+  sceneSelect.value = SCENE_DEFAULT;
+  const timeSelect = document.getElementById('time-select');
+  if (timeSelect) {
+    timeSelect.innerHTML = '<option value="">Automatisch (aus dem Chat)</option>' + TIMES_OF_DAY.map((t) => `<option value="${t.id}">${t.label}</option>`).join('');
+  }
   
   await loadProfiles();
   setupEventListeners();

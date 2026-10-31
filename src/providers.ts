@@ -1,5 +1,6 @@
 import { Env, intVar } from "./env";
 import { getKey } from "./keys";
+import { upstreamUrl } from "./model-allow.js";
 
 export type Role = "user" | "assistant";
 export interface ChatMessage {
@@ -294,7 +295,7 @@ async function fetchUpstream(env: Env, provider: Provider, key: string, req: Cha
     root = base ?? `https://gateway.ai.cloudflare.com/v1/${env.CF_ACCOUNT_ID}/${env.AI_GATEWAY_ID}`;
   }
 
-  const url = (provider.id === "venice" || provider.id === "groq" || provider.id === "mistral") ? `${root}/${provider.path(req.model, (req as { stream?: boolean }).stream)}` : `${root}/${provider.id}/${provider.path(req.model, (req as { stream?: boolean }).stream)}`;
+  const url = upstreamUrl(provider.id, root, provider.path(req.model, (req as { stream?: boolean }).stream));
   const headers: Record<string, string> = {
     "content-type": "application/json",
     ...provider.headers(String(key)),

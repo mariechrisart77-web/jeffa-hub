@@ -296,7 +296,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 function modelShort(id: string): string { return String(id).replace(/^[a-z]+:/, "").replace(/:free$/, "").split("/").pop()!.slice(0, 40); }
 
 /** v79: true = ohne Freigabe nutzbar (kostenlos ODER Anbieter mit eigenem Key/Volumen: Venice, Gemini, LumiaRouter). */
-export function isFreeModel(id: string): boolean { return /:free$/.test(id) || id.startsWith("auto:") || /^(groq|mistral|venice|gemini|lumia)/.test(id); }
+export function isFreeModel(id: string): boolean { return /:free$/.test(id) || id.startsWith("auto:") || /^(groq|mistral|venice|gemini|lumia|grok-)/.test(id); }
 
 function estimateCost(model: string, usage?: { promptTokens: number; outputTokens: number }): number {
   if (!usage || model.endsWith(":free")) return 0;
@@ -307,6 +307,9 @@ function estimateCost(model: string, usage?: { promptTokens: number; outputToken
     "venice-uncensored-role-play": { input: 0.5 / 1e6, output: 2 / 1e6 },
     "venice:gemma-4-uncensored": { input: 0.1625 / 1e6, output: 0.5 / 1e6 },
     "venice:deepseek-v4-1-flash-uncensored": { input: 0.33 / 1e6, output: 1.32 / 1e6 },
+    "grok-4.3": { input: 1.25 / 1e6, output: 2.5 / 1e6 },
+    "grok-4.20-0309-non-reasoning": { input: 1.25 / 1e6, output: 2.5 / 1e6 },
+    "grok-4.7": { input: 2 / 1e6, output: 6 / 1e6 },
   };
   const price = prices[model] || { input: 0.5 / 1e6, output: 1.5 / 1e6 };
   return usage.promptTokens * price.input + usage.outputTokens * price.output;

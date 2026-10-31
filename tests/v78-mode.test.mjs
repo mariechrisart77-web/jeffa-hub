@@ -4,6 +4,7 @@ import { MODES, chatMode, effectiveAdult } from '../apps/shared/mode.js';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 const d = fs.mkdtempSync(path.join(os.tmpdir(), 'po78-')); fs.mkdirSync(d + '/shared');
 fs.writeFileSync(d + '/shared/fsk.js', 'export const isAdult = () => false;');
+fs.copyFileSync(new URL('../apps/shared/scenes.js', import.meta.url), d + '/shared/scenes.js'); // v85: zentrale Szenenliste
 fs.copyFileSync(new URL('../apps/chat/photoopts.js', import.meta.url), d + '/photoopts.js');
 const { SFW_DIRECTIONS, photoFragments } = await import(d + '/photoopts.js');
 import { applyModeToSystem, enforceImageMode, SFW_RULE } from '../src/mode-server.js';

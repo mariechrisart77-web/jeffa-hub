@@ -1,4 +1,5 @@
 import { api } from './shared/api.js';
+import { getModuleBody } from './shared/module-models.js';
 
 const CATS = [['gesicht', '🙂 Gesicht'], ['koerper', '🧍 Körper'], ['details', '🔍 Details'], ['kleidung', '👗 Kleidung']];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -115,7 +116,7 @@ export async function renderRefs(el, profile, save) {
     }
     const cur = profile.looks?.refLook || '';
     try {
-      const r = await api('/api/chat', { method: 'POST', body: { model: 'gemini-3.5-flash-lite', stream: false, memory: false,
+      const r = await api('/api/chat', { method: 'POST', body: { model: 'gemini-3.5-flash-lite', ...getModuleBody('refs'), stream: false, memory: false,
         system: 'Du beschreibst Referenzfotos einer erwachsenen Person neutral und sachlich für einen Bildgenerierungs-Prompt. Nur sichtbare, nicht-explizite Merkmale: Haare (Farbe, Länge, Frisur), Gesicht (Form, Augenfarbe, markante Merkmale), Statur/Figur allgemein, Kleidungsstil, Farben. Keine sexuellen oder anzüglichen Beschreibungen, keine Namen, keine Altersschätzung unter 25. Die mit „Referenz" markierten Bilder zeigen die Person; mit „Beispielbild" markierte Bilder sind nur Stilvorlagen (Bildstil, Licht, Bildaufbau, Kleidungsstil) – übernimm von ihnen den Stil, nicht die Identität. Antworte NUR mit einem kommagetrennten englischen Prompt (max. 70 Wörter).',
         messages: [{ role: 'user', content: `Bilder in Reihenfolge: ${chosen.map((i, n) => (n + 1) + '=' + (REF.includes(i.cat) ? 'Referenz/' + i.cat : 'Beispielbild')).join(', ')}. ${cur ? 'Bisheriger Look-Prompt: ' + cur : ''} Erstelle einen aktualisierten Look-Prompt.`, images }] } });
       const prop = String(r.reply || '').trim().replace(/^["']|["']$/g, '');

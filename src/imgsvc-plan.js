@@ -1,6 +1,7 @@
 // v69 Prompt-Paket: EIN serverseitiger Bild-Plan (pure, node-testbar). Chat und Bild-App senden nur Profil, Verlauf und Dropdowns.
 // Reihenfolge: Altersschutz → Ebenen → Story-Zustand → Composer (JSON) → Dropdown-Vorrang → Abgleich (v69) → Personenfilter → Prompt → Seed → Modell.
-import { detectPoseDetails } from './promptapp/scene-time.js';
+import { detectPoseDetails, detectTimeOfDay } from './promptapp/scene-time.js';
+import { timeOfDayKey } from '../apps/shared/scenes.js';
 import { detectScene as detectSceneV83 } from './promptapp/scene-map.js';
 import { resolveLayers, minorRisk, scrubYouth, youthRisk, dedupeSeg, pickVariation, routeModel, buildRulePrompt, STYLE, NEG_SINGLE, vibeCues, useScene, stripConflicts, VARIATIONS, normQuality, fsk18Family } from './imgsvc-core.js';
 import { abgleich } from './imgsvc-abgleich.js';
@@ -312,6 +313,17 @@ export async function buildImagePlan({ profile = {}, resolved = {}, card = null,
   if (/^(dry|none)$/i.test(parts.outfit_state)) parts.outfit_state = '';
   if (!parts.outfit && story.outfit) parts.outfit = story.outfit;
   if (!parts.background && story.location) parts.background = story.location;
+  // v85 (19): Tageszeit – Wahl im Foto-Menü / in der Bild-App überschreibt die Story-Tageszeit (und das Licht, außer Licht ist gewählt).
+  //   '' = automatisch: Story-Tageszeit; fehlt sie, wird sie aus den letzten Chat-Nachrichten erkannt (deutsch: abends, nachts, morgens, mittags …).
+  const todPick = timeOfDayKey(body.timeOfDay) || timeOfDayKey(po && typeof po === 'object' ? po.time : '') || timeOfDayKey(res.photo?.time);
+  if (todPick) {
+    story = { ...story, time_of_day: todPick };
+    if (!res.photo?.light) parts.lighting = LIGHT[todPick];
+    if (parts.scene) parts.scene = parts.scene.replace(/\bin the (morning|daytime|day|evening|night)\b/i, 'in the ' + (todPick === 'day' ? 'daytime' : todPick));
+  } else if (!story.time_of_day) {
+    const t85 = detectTimeOfDay(msgs.slice(-2).map((m) => m.content || '').join(' '));
+    if (LIGHT[t85]) story = { ...story, time_of_day: t85 };
+  }
   if (!parts.lighting && LIGHT[story.time_of_day]) parts.lighting = LIGHT[story.time_of_day];
   // Defaults nur wo die Story nichts sagt
   if (!parts.outfit && L.defaults?.outfit) parts.outfit = L.defaults.outfit;

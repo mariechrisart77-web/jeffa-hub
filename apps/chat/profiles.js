@@ -8,6 +8,7 @@ import { stylePrompt } from './shared/persona-terms.js';
 import { listConversations } from './chat.js';
 import { photoFragments } from './photoopts.js';
 import { textToControls } from './profilesync.js';
+import { genderOf } from './shared/promptapp/chat.js';
 
 const STORAGE_KEY = 'jeffa.profiles';
 const PROFILES_SCHEMA = 3;
@@ -488,7 +489,7 @@ export function buildImagePrompt(profile, me, castIds, opts = {}) {
   if (profile.persona?.look) {
     const look = profile.persona.look;
     if (look.typ) parts.push(C(look.typ));
-    if (look.age) { const _subj = String(profile.persona?.gender || '').toLowerCase() === 'male' ? 'adult man' : 'adult woman'; parts.push(`${_subj}, looks exactly ${Math.max(18, +look.age || 25)} years old`); }
+    if (look.age) { const _subj = genderOf(profile) === 'm' ? 'adult man' : 'adult woman'; /* v85: 'm' aus dem Profil-Feld Geschlecht zählt (vorher nur 'male') */ parts.push(`${_subj}, looks exactly ${Math.max(18, +look.age || 25)} years old`); }
     if (look.hair) parts.push(look.hair);
     if (look.style) parts.push(C(stylePrompt(look.style))); // v78 D5
     if (look.special?.length) parts.push(...look.special.map(C));

@@ -47,6 +47,12 @@ export async function init(root) {
       </div>
 
       <div class="card">
+        <h3 style="font-size:1rem;margin-bottom:0.5rem">🧩 Modelle pro Modul</h3>
+        <div class="hint">Automatisch = wie bisher. Tippe ein Modul an, um ein eigenes Modell zu wählen; das bisherige bleibt als Ersatz dahinter. Wächter nutzt kein KI-Modell.</div>
+        <div id="module-models"></div>
+      </div>
+
+      <div class="card">
         <h3 style="font-size:1rem;margin-bottom:0.5rem">🖼 Bildstil</h3>
         <select id="s-imgstyle">
           <option value="real">Realistisch (Foto)</option>
@@ -63,6 +69,7 @@ export async function init(root) {
         <label class="field-label" id="s-imgq-label">Bildqualität</label>
         <select id="s-imgq">
           <option value="single">Einzelbild nach Profil-Einstellung – Standard z-image · FSK18 chroma (≈ 0,01 $)</option>
+          <option value="runware">Runware Spar – FLUX schnell (≈ 0,002 $) · braucht Runware-Key im Tresor</option>
           <option value="mix">Spar-Mix: Hintergrund + Person getrennt (≈ 0,03 $) · Standard – in FSK18 automatisch chroma-Einzelbild (≈ 0,01 $)</option>
           <option value="lustify">🔞 Lustify v8 – explizit, 30 Schritte (≈ 0,01 $) · nur FSK18 (Standard → Einzelbild)</option>
           <option value="hq">Hohe Qualität – Standard: qwen-image-3 (≈ 0,04 $) · FSK18: lustify v8 mit 50 Schritten (≈ 0,01 $)</option>
@@ -87,6 +94,12 @@ export async function init(root) {
           <option value="request">Nur auf Anfrage</option>
         </select>
         <div class="hint">Gilt nur für jugendfrei; hemmungslos folgt „Wie oft Bilder?“. Fragst du ausdrücklich nach einem Bild, kommt es immer.</div>
+        <label class="toggle-label"><input type="checkbox" id="s-mix"><span>🧩 Mix: Hintergrund und Person getrennt (≈ +0,02–0,05 $ pro Bild, Standard aus)</span></label>
+        <div id="s-mix-box" style="display:none">
+          <label class="field-label">Hintergrund-Modell</label><select id="s-mix-bg"></select>
+          <label class="field-label">Personen-Modell (Edit)</label><select id="s-mix-fg"></select>
+          <div class="hint" id="s-mix-cost"></div>
+        </div>
       </div>
 
       <div class="card">
@@ -193,6 +206,10 @@ export async function init(root) {
   { const c = root.querySelector('#s-paid'); if (c) { c.checked = getPaidAllowed(); c.onchange = () => setPaidAllowed(c.checked); } }
   renderRouteEditor(root.querySelector('#route-adult'), 'adult');
   renderRouteEditor(root.querySelector('#route-normal'), 'normal');
+  { // v85a: Modelle pro Modul (Standard: automatisch = wie bisher)
+    const mmEl = root.querySelector('#module-models');
+    if (mmEl) import('./shared/module-models.js').then((m) => m.renderModuleModels(mmEl, { isAdult })).catch(() => {});
+  }
   const pst = root.querySelector('#s-push-st'), say = t => { pst.textContent = t; };
   root.querySelector('#s-push-on').onclick = async () => {
     try {
@@ -222,6 +239,29 @@ export async function init(root) {
   root.querySelector('#s-bots-open').onclick = async () => { const { ensureAdmin } = await import('./shared/auth.js'); if (!(await ensureAdmin())) return; (await import('./bot.js')).renderBotAdmin(root.querySelector('#s-bots')); };
   const is = root.querySelector('#s-imgstyle'); is.value = getImageStyle(); is.onchange = () => setImageStyle(is.value);
   for (const [id, k, d] of [['#s-imgq', 'imageQuality', 'single'], ['#s-imgfreq', 'imageFreq', 'request'], ['#s-imgevery', 'imageEverySfw', '5-10']]) { const el = root.querySelector(id); if (!el) continue; el.value = getImageOpt(k, d); el.onchange = () => setImageOpt(k, el.value); }
+  { // v85a: Bild-Mix (Hintergrund + Person getrennt), reine Preis-Logik aus src/imgsvc-mix.js
+    const cb = root.querySelector('#s-mix'), box = root.querySelector('#s-mix-box'), bgSel = root.querySelector('#s-mix-bg'), fgSel = root.querySelector('#s-mix-fg'), costEl = root.querySelector('#s-mix-cost');
+    if (cb && box && bgSel && fgSel) {
+      const cur = getImageOpt('imageMix', null); const mix = cur && typeof cur === 'object' ? cur : {};
+      let MOD = null;
+      const fgList = (adult) => adult ? { 'qwen-edit-uncensored': 0.04, 'firered-image-edit': 0.03 } : { 'qwen-image-2-1-turbo-edit': 0.02, 'qwen-image-2-1-pro-edit': 0.05, 'firered-image-edit': 0.03 };
+      const draw = () => {
+        const on = cb.checked, adult = isAdult();
+        box.style.display = on ? '' : 'none';
+        const bg = mix.bg || 'z-image-turbo';
+        const fg = adult ? (mix.fgAdult || 'qwen-edit-uncensored') : (mix.fg || 'qwen-image-2-1-turbo-edit');
+        bgSel.innerHTML = Object.keys((MOD && MOD.MIX_BG) || { 'z-image-turbo': 0.01, 'qwen-image-2-1-turbo': 0.02, 'chroma': 0.01, 'runware:100@1': 0.002 }).map((k) => `<option value="${k}"${k === bg ? ' selected' : ''}>${k}</option>`).join('');
+        fgSel.innerHTML = Object.keys(fgList(adult)).map((k) => `<option value="${k}"${k === fg ? ' selected' : ''}>${k}</option>`).join('');
+        const bgC = ((MOD && MOD.MIX_BG) || {})[bg] ?? 0.01, fgC = fgList(adult)[fg] ?? 0;
+        if (costEl) costEl.textContent = `Zusatz ≈ ${(bgC + fgC).toFixed(3).replace('.', ',')} $ pro Bild`;
+      };
+      cb.checked = mix.on === true;
+      cb.onchange = () => { setImageOpt('imageMix', { ...mix, on: cb.checked }); draw(); };
+      bgSel.onchange = () => { mix.bg = bgSel.value; setImageOpt('imageMix', { ...mix, on: cb.checked }); draw(); };
+      fgSel.onchange = () => { if (isAdult()) mix.fgAdult = fgSel.value; else mix.fg = fgSel.value; setImageOpt('imageMix', { ...mix, on: cb.checked }); draw(); };
+      draw();
+    }
+  }
   { // v84 P2: Bildmodell automatisch/manuell. Automatisch = 'single' (bestehender Auto-Pfad des Servers).
     const sel = root.querySelector('#s-imgmodel-mode'), q = root.querySelector('#s-imgq'), ql = root.querySelector('#s-imgq-label');
     const drawQ = () => { const mode = getImageOpt('imageModelMode', '') || (getImageOpt('imageQuality', 'single') === 'single' ? 'auto' : 'manual'); sel.value = mode; q.style.display = mode === 'auto' ? 'none' : ''; if (ql) ql.style.display = mode === 'auto' ? 'none' : ''; };

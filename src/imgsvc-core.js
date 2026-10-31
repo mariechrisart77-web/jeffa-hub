@@ -262,6 +262,7 @@ export const MODEL_TABLE = {
   refine: { label: 'Nachschliff', safe: { model: 'qwen-image-2-1-pro-edit', cost: 0.05, edit: { base: 'z-image-turbo', model: 'qwen-image-2-1-pro-edit' } }, adult: { model: 'qwen-edit-uncensored', cost: 0.05, edit: { base: 'chroma', model: 'qwen-edit-uncensored' } } },
   'refine-firered': { label: 'Nachschliff FireRed', safe: { model: 'firered-image-edit', cost: 0.04, edit: { base: 'z-image-turbo', model: 'firered-image-edit' } }, adult: { model: 'firered-image-edit', cost: 0.04, edit: { base: 'chroma', model: 'firered-image-edit' } } },
   krea: { label: 'Krea Premium', safe: { model: 'krea-v2-large', cost: 0.07 }, adult: { model: 'chroma', cost: 0.01 } },
+  runware: { label: 'Runware Spar', safe: { model: 'runware:100@1', cost: 0.002 }, adult: { model: 'runware:100@1', cost: 0.002 } },
 };
 
 /** v75 (e): FSK18-Kleidungsfamilie, die bei adult + ohne explizite Modellwahl chroma erzwingt */

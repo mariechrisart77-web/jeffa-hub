@@ -12,6 +12,9 @@ import { classifyVerdict } from "./imgsvc-checkparse.js";
 import { checkEnabled, checkModel, runCheck, runCheckSpec, applyFixes, logCheckUsage } from "./imgsvc-check";
 import { loadSyncedProfile, loadCard, getCorrections, loadRefMode, loadStarRef } from "./imgsvc-db";
 import { enforceImageMode } from "./mode-server.js";
+import { validComposerModel } from "./model-allow.js";
+import { normalizeMix, mixBackgroundPrompt, mixBackgroundNegative, mixPersonPrompt } from "./imgsvc-mix.js";
+import { runwareTask, parseRunwareImage, RUNWARE_MODEL } from "./runware.js";
 
 const PID = /^[A-Za-z0-9_-]{1,64}$/;
 const j = (s: number, o: unknown) => new Response(JSON.stringify(o), { status: s, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
@@ -24,6 +27,8 @@ interface NewBody {
   photoOverride?: Record<string, string>; camera?: string; dryRun?: boolean; saveStory?: boolean;
   preview?: boolean;
   mode?: string;
+  composerModel?: string;
+  mix?: { bg?: string; fg?: string };
 }
 
 const STORY_TTL = 30 * 24 * 3600;
@@ -60,7 +65,8 @@ export async function imageNewMode(ctx: EventContext<Env, any, any>, env: Env, b
   const preview = body.preview === true;
   const dryRun = preview || body.dryRun === true;
   const wantImage = !dryRun;
-  if (wantImage && !key) return j(503, { error: "not_configured" });
+  const rwKey = env.RUNWARE_API_KEY;
+  if (wantImage && !key && !rwKey) return j(503, { error: "not_configured" });
 
   // story state from KV (unless dryRun without saveStory)
   const cid = String(body.conversationId || "default");
@@ -72,9 +78,19 @@ export async function imageNewMode(ctx: EventContext<Env, any, any>, env: Env, b
   // Composer-LLM (striktes JSON); bei Fehler/Verweigerung → Regel-Composer im Plan
   const hasLLM = !(noAuth && env.IMG_DRYRUN_LLM !== "1");
   const composeLLM = hasLLM ? async (system: string, input: string) => {
-    const m = body.adult === true ? "venice-uncensored-1-2" : (env.DEFAULT_MODEL || "gemini-3.5-flash-lite");
-    const r: any = await complete(env, { model: m, maxTokens: 500, private: true, system, messages: [{ role: "user", content: input }] } as any);
-    return String(r?.reply || "");
+    const def = body.adult === true ? "venice-uncensored-1-2" : (env.DEFAULT_MODEL || "gemini-3.5-flash-lite");
+    const want = validComposerModel(body.composerModel);
+    const models = want ? [want, def] : [def];
+    let lastErr: any = null;
+    for (const m of models) {
+      try {
+        const r: any = await complete(env, { model: m, maxTokens: 500, private: true, system, messages: [{ role: "user", content: input }] } as any);
+        const reply = String(r?.reply || "");
+        if (reply.trim()) return reply;
+      } catch (e) { lastErr = e; console.error("composer llm failed", m); }
+    }
+    if (lastErr) throw lastErr;
+    return "";
   } : null;
   void COMPOSER_JSON_SYSTEM;
 
@@ -93,6 +109,13 @@ export async function imageNewMode(ctx: EventContext<Env, any, any>, env: Env, b
 
   const route: any = P.route;
   const prompt = scrubYouth(P.prompt), negative = scrubYouth(P.negative);
+  // v85a: Bild-Mix (Hintergrund + Person getrennt) – nur wenn gewählt, kein Nachschliff, keine Comic-Seite
+  const mix = body.style !== 'comicpage' ? normalizeMix(body.mix, body.adult === true) : null;
+  const male = /^\s*adult man\b/i.test(String((P as any).identity || ''));
+  const identity = String((P as any).identity || '');
+  const sceneTxt = String((P as any).parts?.scene || (P as any).parts?.background || "");
+  const mixBgPrompt = mix ? scrubYouth(mixBackgroundPrompt({ background: (P as any).parts?.background, scene: (P as any).parts?.scene, lighting: (P as any).parts?.lighting, camera: (P as any).parts?.camera }, P.style)) : "";
+  const mixFgPrompt = mix ? scrubYouth(mixPersonPrompt({ parts: (P as any).parts || {}, identity, male })) : "";
 
   if (dryRun) {
     const common: any = {
@@ -101,6 +124,7 @@ export async function imageNewMode(ctx: EventContext<Env, any, any>, env: Env, b
       composer: P.composer, adult: body.adult === true, style: P.style, quality: P.quality,
       abgleich: P.abgleich || [], image: null, refMode: "off",
     };
+    if (mix) common.mix = { bg: mix.bg, fg: mix.fg, cost: mix.cost, bgPrompt: mixBgPrompt, fgPrompt: mixFgPrompt };
     if (preview) {
       common.checkSpec = (P as any).checkSpec || null;
       common.notes = (P as any).abgleich || [];
@@ -124,6 +148,28 @@ export async function imageNewMode(ctx: EventContext<Env, any, any>, env: Env, b
   // guard: reference look must not add weight syntax or extra people
   finalPrompt = finalPrompt.replace(/\(([^()]*?)\s*:\s*\d+(?:\.\d+)?\s*\)/g, "$1");
 
+  const genRunware = async (p: string, seed: number = P.seed, neg: string = negative) => {
+    if (!rwKey) throw new Error("runware no key");
+    let task: any[];
+    try {
+      task = runwareTask({ prompt: p, negative: neg, width: 1024, height: 1024, seed, adult: body.adult === true, uuid: crypto.randomUUID() });
+    } catch (e: any) { throw new Error("runware task: " + String(e?.message || e).slice(0, 120)); }
+    const res = await fetch("https://api.runware.ai/v1", {
+      method: "POST",
+      headers: { authorization: `Bearer ${rwKey}`, "content-type": "application/json" },
+      body: JSON.stringify(task),
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!res.ok) { const t = (await res.text()).slice(0, 120); console.error("runware", res.status); throw new Error(`runware ${res.status}: ${t}`); }
+    const json: any = await res.json();
+    const r = parseRunwareImage(json);
+    if (r.nsfw && body.adult !== true) throw new Error("runware nsfw");
+    return r.b64;
+  };
+  const genAny = async (model: string, p: string, steps?: number, seed: number = P.seed, neg: string = negative) => {
+    // v85: Runware-Modell gewählt ODER kein Venice-Key (aber Runware-Key) → Runware
+    return model.startsWith("runware:") || (!key && rwKey) ? genRunware(p, seed, neg) : genOne(model, p, steps, seed, neg);
+  };
   const genOne = async (model: string, p: string, steps?: number, seed: number = P.seed, neg: string = negative) => {
     const chroma = model === "chroma";
     const res = await fetch("https://api.venice.ai/api/v1/image/generate", {
@@ -135,16 +181,16 @@ export async function imageNewMode(ctx: EventContext<Env, any, any>, env: Env, b
     if (!im) throw new Error("no image");
     return typeof im === "string" && im.startsWith("data:") ? im.split(",")[1] : String(im);
   };
-  const editOne = async (img: string, model: string) => {
+  const editOne = async (img: string, model: string, promptText?: string) => {
     const res = await fetch("https://api.venice.ai/api/v1/image/edit", {
       method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify({ model, image: img, prompt: buildEditPrompt(prompt, false).slice(0, 1400), output_format: "webp", safe_mode: !body.adult }),
+      body: JSON.stringify({ model, image: img, prompt: String(promptText != null ? promptText : buildEditPrompt(prompt, false)).slice(0, 1400), output_format: "webp", safe_mode: !body.adult }),
     });
     if (!res.ok) throw new Error(`edit ${res.status}: ${(await res.text()).slice(0, 200)}`);
     return b64(new Uint8Array(await res.arrayBuffer()));
   };
   const out = async (dataB64: string, model: string, cost: number, extra: Record<string, unknown> = {}) => {
-    await trackUsage(env, "venice-image", model, 0, 0, cost);
+    await trackUsage(env, model.startsWith("runware") ? "runware" : "venice-image", model, 0, 0, cost);
     const r2 = await storeGenerated(env, dataB64, { profile: pid, model });
     return j(200, {
       dataUrl: `data:image/webp;base64,${dataB64}`, url: r2?.url, model, cost, seed: P.seed,
@@ -154,17 +200,25 @@ export async function imageNewMode(ctx: EventContext<Env, any, any>, env: Env, b
   };
 
   try {
+    if (mix && !route.edit) {
+      try {
+        const bgImg = await genAny(mix.bg, mixBgPrompt, undefined, P.seed, mixBackgroundNegative());
+        const fgText = mixFgPrompt + (lookUsed ? " Appearance: " + lookUsed : "");
+        const img = await editOne(bgImg, mix.fg, scrubYouth(fgText));
+        return await out(img, `mix ${mix.bg} + ${mix.fg}`, mix.cost, { mix: { bg: mix.bg, fg: mix.fg } });
+      } catch (e: any) { console.error("mix failed", String(e?.message || e).slice(0, 160)); }
+    }
     if (route.edit) {
-      const base = await genOne(route.edit.base, finalPrompt);
+      const base = await genAny(route.edit.base, finalPrompt);
       try { return await out(await editOne(base, route.edit.model), `${route.edit.base} + ${route.edit.model}`, route.cost); }
       catch (e) { console.error("refine failed", e); return await out(base, route.edit.base, 0.01); }
     }
     if (route.mix) {
-      const base = await genOne(route.model, finalPrompt);
+      const base = await genAny(route.model, finalPrompt);
       try { return await out(await editOne(base, "qwen-image-2-1-turbo-edit"), "mix", route.cost); }
       catch { return await out(base, route.model, 0.01); }
     }
-    const data = await genOne(route.model, finalPrompt, route.steps);
+    const data = await genAny(route.model, finalPrompt, route.steps);
     // v71: automatischer Bildcheck (Claude-Vision via LumiaRouter), bei Fehlschlag 1× neu mit neuem Seed + Korrektur-Hinweisen
     if (checkEnabled(body, env)) {
       const pp: any = P.parts || {};
@@ -182,7 +236,7 @@ export async function imageNewMode(ctx: EventContext<Env, any, any>, env: Env, b
         const fx = applyFixes(finalPrompt, negative, c1.verdict);
         const seed2 = 1 + Math.floor(Math.random() * 999999998);
         try {
-          const data2 = await genOne(route.model, fx.prompt, route.steps, seed2, fx.negative);
+          const data2 = await genAny(route.model, fx.prompt, route.steps, seed2, fx.negative);
           const c2: any = await runOnce(`data:image/webp;base64,${data2}`);
           check.retried = true; check.second = c2.verdict; check.costUsd += c2.costUsd; check.firstSeed = P.seed;
           await logCheckUsage(env, check.model, check.costUsd);
@@ -204,6 +258,14 @@ export async function imageNewMode(ctx: EventContext<Env, any, any>, env: Env, b
     return await out(data, shortModel(route.model, route.label), route.cost);
   } catch (e: any) {
     const t = String(e?.message || "");
+    if (rwKey && /402|insufficient|balance/i.test(t)) {
+      // v85a: Venice leer → EIN Ersatzversuch über Runware (nur wenn Key im Tresor/Env)
+      try {
+        const img = await genRunware(finalPrompt, P.seed, negative);
+        return await out(img, `${RUNWARE_MODEL} (Ersatz – Venice leer)`, 0.002, { fallback: "runware" });
+      } catch (e2: any) { console.error("runware fallback failed", String(e2?.message || e2).slice(0, 160)); }
+    }
+    if (/runware no key/.test(t)) return j(503, { error: { code: "runware_no_key", message: "Runware-Key fehlt – bitte im Tresor hinterlegen oder andere Qualität wählen" } });
     if (/402|insufficient|balance/i.test(t)) return j(402, { error: { code: "venice_no_credit", message: "Venice-Guthaben leer – bitte auf venice.ai aufladen" } });
     console.error("new-mode image failed", e);
     return j(502, { error: "generation_failed" });

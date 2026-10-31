@@ -3,6 +3,7 @@
 // Images are drawn WITHOUT text (FSK18: chroma, Standard: qwen-image-2-1-turbo); all text is HTML on top.
 // Every panel is its own image (Spar mode removed in v40); speech bubbles are HTML overlays.
 import { api } from './shared/api.js';
+import { getModuleBody, getModuleChain } from './shared/module-models.js';
 import { isAdult, onAdultChange } from './shared/fsk.js';
 import { getProfiles } from './profiles.js';
 
@@ -52,7 +53,8 @@ export const keyPanel = d => d.panels.reduce((b, p, i, a) => p.w * p.h > a[b].w 
 /** LLM script (FSK18: venice-uncensored-1-2, else default): {title, cast:[{name,look}], panels:[{scene_en,caption_es,bubbles:[{speaker,text_es,pos,head}],shot}]} */
 export async function comicScript(story, { panels = 4, level = 'A2-B1', chars = '', adult = false } = {}) {
   const model = adult ? 'venice-uncensored-1-2' : 'gemini-3.5-flash-lite';
-  const r = await api('/api/chat', { method: 'POST', body: { model, stream: false, memory: false,
+  const mb = getModuleBody('comic_text', { adult });
+  const r = await api('/api/chat', { method: 'POST', body: { model, ...mb, stream: false, memory: false,
     system: `Du schreibst eine Comicseite für einen Spanisch-Lernenden (Niveau ${level}). Antworte NUR mit JSON:
 {"title":"kurzer spanischer Titel","cast":[{"name":"Name","look":"englische Bildbeschreibung der Figur: Alter, Haare, Kleidung (gleich in allen Panels)"}],"panels":[{"scene_en":"englische Bildbeschreibung: Ort, wer ist wo (links/rechts), Handlung – ohne Text","caption_es":"kurze spanische Erzählzeile, max. 6 Wörter","bubbles":[{"speaker":"Name","text_es":"natürliches Spanisch, max. 8 Wörter","pos":"left|right|center","head":"top|middle"}],"shot":"medium shot|close-up|wide shot|…"}]}
 Genau ${panels} Panels, je 0–2 kurze Sprechblasen, zusammenhängende Mini-Geschichte mit Pointe. "pos" = Seite der sprechenden Person im Panel (left/right/center), "head" = Kopfhöhe (top/middle).`,
@@ -144,7 +146,8 @@ export async function makeComic({ story, panels = 3, keyHQ = false, adult = isAd
   for (let i = 0; i < panels; i++) {
     onStep(`🎨 Panel ${i + 1}/${panels}…`, c);
     const p = d.panels[i], sp = script.panels[i], wide = p.w / p.h > 1.3;
-    const model = adult ? 'chroma' : (keyHQ && i === kp ? MODEL_KEY : MODEL_CHEAP);
+    const ci = getModuleChain('comic_image', { adult })[0];
+    const model = ci || (adult ? 'chroma' : (keyHQ && i === kp ? MODEL_KEY : MODEL_CHEAP));
     const r = await draw(panelPrompt(sp, script.cast), adult, wide ? 1024 : 768, wide ? 640 : 1024, model);
     c.images[i] = r.url; c.cost += r.cost; c.models.push(r.model);
   }

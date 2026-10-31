@@ -5,6 +5,7 @@ import { execSync } from 'node:child_process';
 
 const d = fs.mkdtempSync(path.join(os.tmpdir(), 'v51-')); fs.mkdirSync(d + '/shared');
 fs.writeFileSync(d + '/shared/fsk.js', 'export const isAdult = () => true;');
+fs.copyFileSync(new URL('../apps/shared/scenes.js', import.meta.url), d + '/shared/scenes.js'); // v85: zentrale Szenenliste
 fs.copyFileSync(new URL('../apps/chat/photoopts.js', import.meta.url), d + '/photoopts.js');
 const po = await import(d + '/photoopts.js');
 const ids = (adult) => po.CATALOG.outfit.flatMap(([, o]) => o).filter(x => !x[3] || adult).map(x => x[0]);
@@ -31,7 +32,8 @@ test('v51 own presets k1/k5/k6 untouched', () => {
   assert.doesNotMatch(execSync('git diff HEAD -- apps/chat/profiles.js').toString(), /^[-+].*id: 'k[156]'/m);
 });
 test('v51 photo sheet link toggle + one-off override to /api/image', () => {
-  const c = readFileSync('apps/chat/chat.js', 'utf8') + readFileSync('apps/chat/image-client.js', 'utf8'); // v68: Bildcode in image-client.js
+  const c = readFileSync('apps/chat/chat.js', 'utf8') + readFileSync('apps/chat/chat-photo.js', 'utf8') + // v85: chat.js aufgeteilt
+     readFileSync('apps/chat/image-client.js', 'utf8'); // v68: Bildcode in image-client.js
   assert.match(c, /🔗 Mit Profil verbunden/);
   assert.match(c, /jeffa\.photoLinked'\) !== '0'/); // default on
   assert.match(c, /photoOverride: once \? frag : undefined/);

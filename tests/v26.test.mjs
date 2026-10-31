@@ -6,6 +6,7 @@ import { makeKey, KEY_RE, signUrl, verifySig, storeGenerated } from '../src/r2im
 
 const d = fs.mkdtempSync(path.join(os.tmpdir(), 'v26-')); fs.mkdirSync(d + '/shared');
 fs.writeFileSync(d + '/shared/fsk.js', 'export const isAdult = () => false;');
+fs.copyFileSync(new URL('../apps/shared/scenes.js', import.meta.url), d + '/shared/scenes.js'); // v85: zentrale Szenenliste
 fs.copyFileSync(new URL('../apps/chat/photoopts.js', import.meta.url), d + '/photoopts.js');
 const po = await import(d + '/photoopts.js');
 const prof = (o = {}) => ({ looks: { kleidung: 'k2', pose: 'frei', umgebung: 'frei', presets: { kleidung: [{ id: 'k1', label: 'A', prompt: 'adult text', adult: true }, { id: 'k2', label: 'Abendkleid', prompt: 'evening dress' }], pose: [{ id: 'p1', label: 'Stehend', prompt: 'standing' }], umgebung: [] } }, photo: o });

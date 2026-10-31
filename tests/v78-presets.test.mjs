@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 const d = fs.mkdtempSync(path.join(os.tmpdir(), 'v78p-')); fs.mkdirSync(d + '/shared');
 fs.writeFileSync(d + '/shared/fsk.js', 'export const isAdult = () => true;');
+fs.copyFileSync(new URL('../apps/shared/scenes.js', import.meta.url), d + '/shared/scenes.js'); // v85: zentrale Szenenliste
 fs.copyFileSync(new URL('../apps/chat/photoopts.js', import.meta.url), d + '/photoopts.js');
 const { CATALOG, LEGACY_IDS, LEGACY_PROMPTS, SCENE_TIME, photoFragments, optionsHtml } = await import(d + '/photoopts.js');
 

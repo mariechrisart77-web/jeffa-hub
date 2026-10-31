@@ -4,6 +4,7 @@ import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'
 // photoopts.js imports ./shared/fsk.js (copied at build) -> load it from a temp dir with a stub
 const d = fs.mkdtempSync(path.join(os.tmpdir(), 'po-')); fs.mkdirSync(d + '/shared');
 fs.writeFileSync(d + '/shared/fsk.js', 'export const isAdult = () => false;');
+fs.copyFileSync(new URL('../apps/shared/scenes.js', import.meta.url), d + '/shared/scenes.js'); // v85: zentrale Szenenliste
 fs.copyFileSync(new URL('../apps/chat/photoopts.js', import.meta.url), d + '/photoopts.js');
 const m = await import(d + '/photoopts.js');
 test('Frei leaves everything to the scene', () => { assert.deepEqual(Object.values(m.photoFragments({ photo: {} }, true)).filter(Boolean), []); });
