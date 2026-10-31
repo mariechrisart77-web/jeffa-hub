@@ -35,13 +35,13 @@ export async function handleImage(ctx: EventContext<Env, any, any>): Promise<Res
   // Prompt- & Bild-Dienst (spec r5): {profile, context} -> server builds the prompt (single path for chat + Bild-App).
   if ((body as any).profile) return imageNewMode(ctx, context.env, body as any);
   const { prompt } = body;
-  // v68: freier Prompt für alle erlaubt (Christian), 21+-Schutz bleibt auf diesem Weg aktiv
+  // v68: freier Prompt für alle erlaubt (Christian), 18+-Schutz bleibt auf diesem Weg aktiv
   if (prompt) {
     const { minorRisk, youthRisk } = await import("../imgsvc");
     let minor = youthRisk(String(prompt));
     const pid = String((body as any).ref_profile || "");
     if (!minor && pid && body.adult === true) { try { const { loadSyncedProfile } = await import("../imgsvc-db"); const sp = await loadSyncedProfile(context.env, pid); if (sp) minor = minorRisk(sp.profile || {}, sp.resolved || {}); } catch (e) { console.error("profile load failed", e); } }
-    if (minor) return new Response(JSON.stringify({ error: "not_adult", message: "Profil muss eindeutig erwachsen sein (21+)" }), { status: 403, headers: { "content-type": "application/json" } });
+    if (minor) return new Response(JSON.stringify({ error: "not_adult", message: "Profil muss eindeutig erwachsen sein (18+)" }), { status: 403, headers: { "content-type": "application/json" } });
   }
   const safeMode = body.adult === true ? false : body.safe_mode !== false;
   const comicStyle = ["comic", "comicpage", "manhwa"].includes(String(body.style));

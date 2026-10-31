@@ -16,8 +16,8 @@ const SCENE = "You write a vivid scene description for an AI image generator, po
 const EMPTY = { positive: "", negative: "", goodSeed: null as number | null };
 const COMPOSER = "Du bist ein Prompt-Designer für einen Bildgenerator. Du erhältst die Einstellungen einer Figur (Aussehen, Stil-Preset, Pose, Qualität), den aktuellen Chat-Kontext und Feedback-Korrekturen. Setze daraus EINEN zusammenhängenden englischen Bild-Prompt aus kurzen Stichworten zusammen, der zur aktuellen Szene im Chat passt. Regeln: Verwende nur Inhalte aus den Einstellungen und dem Kontext, erfinde keine neuen Details hinzu. Identität (Gesicht, Haare, Figur) unverändert übernehmen. Alle Personen sind Erwachsene (18+). Feedback-Korrekturen berücksichtigen. Keine Schrift im Bild. Reihenfolge: Szene/Handlung, Kamera, Licht, Outfit, Identität, Stil, Qualität. Maximal 120 Wörter. Antworte NUR mit dem Prompt.";
 
-// v61: autofill writer – same cheap text models as the scene writer; characters always clearly adult (21+)
-const AF_BASE = "You help fill in a character sheet for a role-play chat + AI image app. Use ONLY the given character data (name, description, look, personality, chosen image style, reference-photo description); do not invent a different identity. The character is a clearly adult woman aged 21 or older: describe her as an adult woman, never use youthful or childlike words (no teen, girl, young-looking, schoolgirl, petite-child, kid, minor, jugendlich, kindlich, Mädchen) and never state an age under 21. Answer ONLY with compact JSON, no markdown.";
+// v61: autofill writer – same cheap text models as the scene writer; characters always clearly adult (18+)
+const AF_BASE = "You help fill in a character sheet for a role-play chat + AI image app. Use ONLY the given character data (name, description, look, personality, chosen image style, reference-photo description); do not invent a different identity. The character is a clearly adult woman aged 18 or older: describe her as an adult woman, never use youthful or childlike words (no teen, girl, young-looking, schoolgirl, petite-child, kid, minor, jugendlich, kindlich, Mädchen) and never state an age under 18. Answer ONLY with compact JSON, no markdown.";
 export const AF_SYSTEM: Record<string, string> = {
   stil: AF_BASE + ' Return {"beispielPersona":"German, 4-6 short sentences: example personality description in the style the user likes – tone, way of speaking, temperament, quirks","beispielBildprompt":"English, comma-separated image prompt keywords (max 60 words): framing, light, setting mood, outfit style, rendering style matching the chosen image style; refer to her as \'adult woman\'"}.',
   outfit: AF_BASE + ' Return {"outfitKeyword":"one short German keyword for her signature outfit, max 2 words, lowercase","outfitText":"English, comma-separated (max 45 words): her signature everyday outfit with colours, materials and accessories, fitting her look and style","outfitNeg":"English, comma-separated (max 15 words): clothing items or looks to avoid for consistency"}.',
@@ -61,7 +61,7 @@ export async function handleImageFb(ctx: EventContext<Env, any, any>): Promise<R
       const b: any = await request.json().catch(() => null);
       const section = String(b?.section || "");
       if (!b || !AF_SYSTEM[section] || typeof b.profile !== "object" || !b.profile) return j(400, { error: "bad_input" });
-      if (minorRisk(b.profile, {})) return j(403, { error: "not_adult", message: "Profil muss eindeutig erwachsen sein (21+)" });
+      if (minorRisk(b.profile, {})) return j(403, { error: "not_adult", message: "Profil muss eindeutig erwachsen sein (18+)" });
       const models = b.adult === true ? ["venice-uncensored-1-2"] : [model]; // like the scene writer: FSK18 never via Gemini
       for (const m of models) {
         try {

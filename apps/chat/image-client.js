@@ -81,7 +81,7 @@ export async function generateImageInChat(deps, opts = {}) {
       ph.content = '⚠️ Freie Prompts sind nur für Admins erlaubt'; ph.status = 'error'; saveConversation(conv); renderMessages(); return;
     }
     if (e?.code === 'not_adult') {
-      toast?.('Profil muss eindeutig erwachsen sein (21+)'); ph.status = 'error'; ph.content = '⚠️ Profil muss eindeutig erwachsen sein (21+)'; saveConversation(conv); renderMessages(); return;
+      toast?.('Profil muss eindeutig erwachsen sein (18+)'); ph.status = 'error'; ph.content = '⚠️ Profil muss eindeutig erwachsen sein (18+)'; saveConversation(conv); renderMessages(); return;
     }
     ph.content = `⚠️ Bild fehlgeschlagen: ${e.message}`; ph.status = 'error'; saveConversation(conv); renderMessages();
   }

@@ -6,6 +6,7 @@ import { isAdult, setAdult, onAdultChange } from './shared/fsk.js';
 import { authState, lockScreen } from './shared/auth.js';
 import { getSession } from './shared/api.js';
 import { initLightbox } from './shared/lightbox.js';
+import { applyTabOrder, moveId, TAB_ORDER_KEY } from './shared/taborder.js';
 initLightbox();
 
 const tabBtns = document.querySelectorAll('.tab-btn');
@@ -125,6 +126,161 @@ async function switchTab(name) {
 }
 
 tabBtns.forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+
+// v84b: Kacheln (Tabs) per Drag & Drop umsortieren – ein Pointer-Code für Touch, Stift und Maus.
+const tabsNav = document.querySelector('nav.tabs-nav');
+const LONG_PRESS_MS = 450;
+const TOUCH_MOVE_TOL = 8;
+const MOUSE_MOVE_TOL = 6;
+let suppressTabClick = false;
+
+function readTabOrder() {
+  try { const a = JSON.parse(localStorage.getItem(TAB_ORDER_KEY) || '[]'); return Array.isArray(a) ? a.filter(x => typeof x === 'string') : []; } catch { return []; }
+}
+
+function getTabButtons() {
+  return tabsNav ? Array.from(tabsNav.querySelectorAll('.tab-btn')) : [];
+}
+
+function getTabIds() { return getTabButtons().map(b => b.dataset.tab); }
+
+function saveTabOrder(ids) {
+  try { localStorage.setItem(TAB_ORDER_KEY, JSON.stringify(ids)); } catch {}
+}
+
+export function resetTabOrder() {
+  try { localStorage.removeItem(TAB_ORDER_KEY); } catch {}
+  location.reload();
+}
+
+function applySavedTabOrder() {
+  if (!tabsNav) return;
+  const btns = getTabButtons();
+  const byId = new Map(btns.map(b => [b.dataset.tab, b]));
+  const ordered = applyTabOrder(btns.map(b => b.dataset.tab), readTabOrder());
+  for (const id of ordered) { const b = byId.get(id); if (b) tabsNav.appendChild(b); }
+}
+
+function setupTabDrag() {
+  if (!tabsNav) return;
+  const scrollEl = () => tabsNav;
+
+  let drag = null; // { btn, pointerId, startX, startY, mode:'pending'|'drag', timer, originOrder, isMouse, scrollTimer, scrollDir }
+
+  const clearDragVisual = () => {
+    if (!drag) return;
+    clearTimeout(drag.timer);
+    if (drag.scrollTimer) { clearInterval(drag.scrollTimer); drag.scrollTimer = null; }
+    drag.btn.classList.remove('dragging');
+    tabsNav.classList.remove('reordering');
+    drag = null;
+  };
+
+  const startDragMode = (st) => {
+    st.mode = 'drag';
+    st.originOrder = getTabIds();
+    st.btn.classList.add('dragging');
+    tabsNav.classList.add('reordering');
+    try { navigator.vibrate?.(15); } catch {}
+  };
+
+  const autoScroll = (clientX) => {
+    const el = scrollEl();
+    const r = el.getBoundingClientRect();
+    if (clientX < r.left + 40) { el.scrollLeft -= 10; }
+    else if (clientX > r.right - 40) { el.scrollLeft += 10; }
+  };
+
+  const moveToPointer = (clientX) => {
+    if (!drag) return;
+    const others = getTabButtons().filter(b => b !== drag.btn);
+    let target = null;
+    for (const b of others) {
+      const r = b.getBoundingClientRect();
+      const mid = r.left + r.width / 2;
+      if (clientX < mid) { target = b; break; }
+    }
+    if (target) { if (drag.btn.nextElementSibling !== target) tabsNav.insertBefore(drag.btn, target); }
+    else { const last = others[others.length - 1]; if (last && drag.btn.previousElementSibling !== last) last.after(drag.btn); else if (!last) tabsNav.appendChild(drag.btn); }
+  };
+
+  const onPointerDown = (e) => {
+    if (drag) return;
+    const btn = e.target?.closest?.('.tab-btn');
+    if (!btn || !tabsNav.contains(btn)) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const isMouse = e.pointerType === 'mouse';
+    drag = { btn, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, mode: 'pending', originOrder: null, timer: null, isMouse, scrollTimer: null };
+    if (!isMouse) {
+      drag.timer = setTimeout(() => { if (drag && drag.mode === 'pending') startDragMode(drag); }, LONG_PRESS_MS);
+    }
+    btn.setPointerCapture?.(e.pointerId);
+  };
+
+  const onPointerMove = (e) => {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    const dist = Math.hypot(dx, dy);
+    if (drag.mode === 'pending') {
+      const tol = drag.isMouse ? MOUSE_MOVE_TOL : TOUCH_MOVE_TOL;
+      if (dist > tol) {
+        if (drag.isMouse) startDragMode(drag);
+        else { clearDragVisual(); return; } // Finger bewegt → normales Scrollen
+      } else return;
+    }
+    if (drag.mode === 'drag') {
+      e.preventDefault();
+      drag.lastX = e.clientX;
+      moveToPointer(e.clientX);
+      const el = scrollEl();
+      const r = el.getBoundingClientRect();
+      const nearEdge = e.clientX < r.left + 40 ? -1 : e.clientX > r.right - 40 ? 1 : 0;
+      if (nearEdge && !drag.scrollTimer) {
+        drag.scrollTimer = setInterval(() => { if (!drag) return; autoScroll(drag.lastX); moveToPointer(drag.lastX); }, 16);
+      } else if (!nearEdge && drag.scrollTimer) { clearInterval(drag.scrollTimer); drag.scrollTimer = null; }
+    }
+  };
+
+  const endDrag = (e, commit) => {
+    if (!drag || (e && e.pointerId !== drag.pointerId)) return;
+    const st = drag;
+    if (st.mode === 'drag') {
+      if (commit) {
+        saveTabOrder(getTabIds());
+        toast('Reihenfolge gespeichert');
+        suppressTabClick = true;
+        setTimeout(() => { suppressTabClick = false; }, 400);
+      } else if (st.originOrder) {
+        const byId = new Map(getTabButtons().map(b => [b.dataset.tab, b]));
+        for (const id of st.originOrder) { const b = byId.get(id); if (b) tabsNav.appendChild(b); }
+      }
+    }
+    clearDragVisual();
+  };
+
+  const onPointerUp = (e) => endDrag(e, true);
+  const onPointerCancel = (e) => endDrag(e, false);
+
+  tabsNav.addEventListener('pointerdown', onPointerDown);
+  window.addEventListener('pointermove', onPointerMove, { passive: false });
+  window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('pointercancel', onPointerCancel);
+
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && drag) endDrag(null, false); }, true);
+  // v84b QA: iOS/Android würden nach dem Langdruck sonst scrollen und pointercancel feuern –
+  // im Zieh-Modus das native Scrollen per touchmove (passive:false) unterbinden; Kontextmenü unterdrücken.
+  tabsNav.addEventListener('touchmove', (e) => { if (drag && drag.mode === 'drag') e.preventDefault(); }, { passive: false });
+  tabsNav.addEventListener('contextmenu', (e) => { if (drag) e.preventDefault(); });
+
+  // Klick direkt nach dem Ziehen darf den Tab nicht wechseln.
+  tabsNav.addEventListener('click', (e) => {
+    if (suppressTabClick) { e.stopPropagation(); e.preventDefault(); suppressTabClick = false; }
+  }, true);
+}
+
+applySavedTabOrder();
+setupTabDrag();
 
 window.addEventListener('hashchange', () => {
   const hash = location.hash.slice(1);

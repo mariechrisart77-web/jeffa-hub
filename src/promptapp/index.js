@@ -11,7 +11,7 @@ import { storyScene, detectStoryPose, detectScene } from './scene-map.js';
 import { resolveSceneTarget, fitPoseToScene, poseExtras } from './consistency.js';
 import { reconcileOutfitNudity, dedupeGarmentTags } from './garments.js';
 
-const AGE_MSG_DE = 'Profil muss eindeutig erwachsen sein (21+)';
+const AGE_MSG_DE = 'Profil muss eindeutig erwachsen sein (18+)';
 
 /** Basis-Negatives: Anatomie + Solo (Basislinie der Pipeline seit v68) */
 const NEG_BASE = 'bad anatomy, extra limbs, deformed hands, watermark, text, letters, logo, signature, lowres, blur, jpeg artifacts';
@@ -50,7 +50,7 @@ export const SCENE_DEFAULTS = {
 };
 
 /**
- * 21+/FSK18-Guard: der Request-Flag `adult === true` ist maßgeblich (v81). Herabgestuft wird nur
+ * 18+/FSK18-Guard: der Request-Flag `adult === true` ist maßgeblich (v81). Herabgestuft wird nur
  * noch bei ausdrücklicher Sperre im Profil (`adult === 'never'` oder `adultMode === false`).
  * Ein Profil-Flag `adult|fsk|fsk18 === false` stuft eine adult-Anfrage NICHT mehr herab.
  * `ph` wird IN-PLACE bereinigt (Aufrufer erwartet Änderungen am selben Objekt).
@@ -235,8 +235,8 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
   let identity = idBuilt.identity;
   const age = idBuilt.age;
 
-  // 2. 21+-Block
-  if (adult && !isAdultProfile(profile) && age < 21) {
+  // 2. 18+-Block
+  if (adult && !isAdultProfile(profile) && age < 18) {
     return { error: { code: 'not_adult', message: AGE_MSG_DE } };
   }
 

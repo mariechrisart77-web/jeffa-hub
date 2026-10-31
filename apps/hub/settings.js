@@ -1,5 +1,5 @@
 import { isAdult, setAdult } from './shared/fsk.js';
-import { authState, ensureAdmin, registerWebAuthn, setupPin, logout } from './shared/auth.js';
+import { authState, ensureAdmin, registerWebAuthn, setupPin, logout, prefetchWebAuthn } from './shared/auth.js';
 import { lockScreen } from './shared/auth.js';
 import { api, APIError } from './shared/api.js';
 import { getProfile } from './profiles.js';
@@ -161,8 +161,14 @@ export async function init(root) {
           <button class="btn-sm" id="s-faceid">Face ID einrichten</button>
           <button class="btn-sm" id="s-pin">PIN festlegen</button>
         </div>
-        <label class="toggle-label" style="margin-top:0.75rem"><input type="checkbox" id="s-faceid-on" ${get().faceId === true ? 'checked' : ''}><span>Face ID beim Entsperren anbieten (Standard: aus)</span></label>
+        <label class="toggle-label" style="margin-top:0.75rem"><input type="checkbox" id="s-faceid-on" ${get().faceId !== false ? 'checked' : ''}><span>Face ID beim Entsperren anbieten (Standard: an)</span></label>
         <div class="hint">Angemeldet bleibt dieses Gerät 90 Tage ab letzter Nutzung – bis „Abmelden“.</div>
+      </div>
+
+      <div class="card">
+        <h3 style="font-size:1rem;margin-bottom:0.75rem">↔️ Kacheln</h3>
+        <div class="hint" style="margin-bottom:0.75rem">Kacheln oben lange drücken (Handy) bzw. mit der Maus ziehen, um sie umzusortieren.</div>
+        <button class="btn-sm btn-secondary" id="s-taborder-reset">↺ Kachel-Reihenfolge zurücksetzen</button>
       </div>
 
       <div class="card">
@@ -261,12 +267,27 @@ export async function init(root) {
 
   root.querySelector('#s-faceid-on').onchange = (e) => set({ faceId: e.target.checked });
 
+  const tabResetBtn = root.querySelector('#s-taborder-reset');
+  if (tabResetBtn) tabResetBtn.onclick = () => {
+    try { localStorage.removeItem('jeffa.tabOrder'); } catch {}
+    location.reload();
+  };
+
+  // v84b QA: iOS-Safari braucht create() direkt in der Tipp-Geste → Options vorab laden
+  // (geht ohne Admin nur bei Ersteinrichtung; sonst erst nach ensureAdmin, dann zweiter Tipp).
+  const faceNeedsAdmin = st.session?.role !== 'admin' && (st.pinSet || st.passkeys);
+  if (!faceNeedsAdmin) prefetchWebAuthn('register').catch(() => {});
   root.querySelector('#s-faceid').onclick = async () => {
     try {
       if (st.session?.role !== 'admin' && (st.pinSet || st.passkeys)) {
-        await ensureAdmin();
+        if (!(await ensureAdmin())) return;
+        st.session = { ...(st.session || {}), role: 'admin' };
+        await prefetchWebAuthn('register');
+        alert('Angemeldet ✓ – bitte jetzt noch einmal auf „Face ID einrichten" tippen.');
+        return;
       }
       await registerWebAuthn();
+      try { set({ faceId: true }); } catch {}
       alert('Face ID erfolgreich eingerichtet');
       init(root);
     } catch (err) {

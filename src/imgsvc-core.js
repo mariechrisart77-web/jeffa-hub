@@ -39,9 +39,9 @@ const MINOR_RX = /\b(fast\s+)?kindlich\w*|\bjugendlich\w*|\bchild\w*|\bkid\w*|\b
 const VIBE = [[/lebhaft|lively|energ/i, 'lively animated body language, mid-gesture'], [/neugierig|curious/i, 'curious glance, head slightly tilted'], [/humorvoll|witzig|funny|humor/i, 'amused grin, laughing eyes'], [/spontan|spontaneous/i, 'candid spontaneous pose, caught mid-movement'], [/verspielt|playful/i, 'playful teasing pose'], [/warm/i, 'warm inviting smile'], [/aufmerksam|attentive/i, 'attentive direct eye contact with the camera'], [/verständnisvoll|sanft|gentle/i, 'soft gentle expression'], [/selbstbewusst|confident|dominant/i, 'confident upright posture, chin raised'], [/frech|cheeky|keck/i, 'cheeky smirk'], [/schüchtern|shy/i, 'shy glance, slightly averted eyes'], [/leidenschaft|passion/i, 'intense smouldering gaze'], [/ruhig|calm/i, 'relaxed calm posture'], [/temperament|wild/i, 'wild energetic pose, tousled hair']];
 export function vibeCues(traits) { const t = String(traits || ''); return VIBE.filter(([rx]) => rx.test(t)).map(([, c]) => c).slice(0, 5).join(', '); }
 export function outfitEmphasis(outfit) { const o = String(outfit || '').trim(); if (!o) return ''; const wet = /\bwet\b|nass|soaked|damp/i.test(o) ? ' The clothes are visibly soaked and dripping wet, with dark damp patches, the fabric clinging tightly, water droplets on fabric and skin.' : ''; return `She is wearing ${o}.${wet}`; }
-export function minorRisk(profile, resolved) { const age = +(profile?.persona?.look?.age ?? profile?.look?.age ?? 0); if (age && age < 21) return true; const txt = [resolved?.identity, resolved?.look, profile?.persona?.look?.style, profile?.persona?.look?.details, profile?.description].map((x) => String(x || '')).join(' '); MINOR_RX.lastIndex = 0; const hit = MINOR_RX.test(txt) || /looks about (1\d|20)\b|\b(1[0-9]|20)\s*(jahre|years? old)/i.test(txt); MINOR_RX.lastIndex = 0; return hit; }
+export function minorRisk(profile, resolved) { const age = +(profile?.persona?.look?.age ?? profile?.look?.age ?? 0); if (age && age < 18) return true; const txt = [resolved?.identity, resolved?.look, profile?.persona?.look?.style, profile?.persona?.look?.details, profile?.description].map((x) => String(x || '')).join(' '); MINOR_RX.lastIndex = 0; const hit = MINOR_RX.test(txt) || /looks about (1[0-7])\b|\b(1[0-7])\s*(jahre|years? old)/i.test(txt); MINOR_RX.lastIndex = 0; return hit; }
 export function addCues(prompt, L, traits) { let p = String(prompt || '').replace(/,?\s*no text, no letters\s*$/i, ''); const oe = outfitEmphasis(L.outfit), v = vibeCues(traits); if (oe) p = oe + ' ' + p; if (v) p += ', personality shown: ' + v; return (p + ', no text, no letters').slice(0, 2400); }
-export function scrubYouth(t) { return String(t || '').replace(MINOR_RX, '').replace(/looks about (1\d|20)\b/gi, '').replace(/looks exactly (1\d|20) years old/gi, '').replace(/\b(1[0-9]|20)\s*(-?\s*)(jährig\w*|jahre\w*|years?[ -]old)/gi, '').replace(/[ \t]{2,}/g, ' ').replace(/\s+([,.])/g, '$1').replace(/,\s*,+/g, ',').trim(); }
+export function scrubYouth(t) { return String(t || '').replace(MINOR_RX, '').replace(/looks about (1[0-7])\b/gi, '').replace(/looks exactly (1[0-7]) years old/gi, '').replace(/\b(1[0-7])\s*(-?\s*)(jährig\w*|jahre\w*|years?[ -]old)/gi, '').replace(/[ \t]{2,}/g, ' ').replace(/\s+([,.])/g, '$1').replace(/,\s*,+/g, ',').trim(); }
 export function dedupeSeg(t) { const seen = new Set(), out = []; for (const seg of String(t || '').replace(MINOR_RX, '').split(/\s*,\s*/)) { const k = seg.trim().toLowerCase(); if (!k || seen.has(k)) continue; seen.add(k); out.push(seg.trim()); } return out.join(', '); }
 const clean = (t, n) => String(t || '').replace(/[#*_`>"„“]/g, '').slice(0, n);
 const cleanComma = (t) => String(t || '').replace(/,\s*,+/g, ',').replace(/^[\s,;.]+|[\s,;.]+$/g, '').replace(/\s{2,}/g, ' ').replace(/\s+([,.])/g, '$1').trim();
@@ -98,7 +98,7 @@ export function resolveLayers({ profile = {}, resolved = {}, card = null, scene 
   let identity = dedupeSeg(clean(resolved.identity != null && resolved.identity !== '' ? resolved.identity : resolved.look, 4000)).slice(0, 1200);
   if (resolved.refLook && !identity.includes(resolved.refLook)) identity = dedupeSeg(clean(resolved.refLook + ', ' + identity, 4000)).slice(0, 1200);
   const _subj = String(profile?.persona?.gender || '').toLowerCase() === 'male' ? 'adult man' : 'adult woman';
-  if (!identity) identity = [cl.typ, cl.age && `${_subj}, looks exactly ${Math.max(21, +cl.age || 25)} years old`, cl.hair, cl.eyes, cl.skin, cl.style, cl.details, cf.statur, cf.groesse].filter(Boolean).join(', ');
+  if (!identity) identity = [cl.typ, cl.age && `${_subj}, looks exactly ${Math.max(18, +cl.age || 25)} years old`, cl.hair, cl.eyes, cl.skin, cl.style, cl.details, cf.statur, cf.groesse].filter(Boolean).join(', ');
   const cardIdentity = [];
   if (!pl.hair && cl.hair && !identity.includes(cl.hair)) cardIdentity.push(cl.hair);
   if (cl.eyes && !identity.includes(cl.eyes)) cardIdentity.push(cl.eyes);
@@ -236,7 +236,7 @@ function normKey(s) { return String(s || '').toLowerCase().normalize('NFKD').rep
 
 /* ---------------- composer ---------------- */
 
-export const COMPOSER_SYSTEM = `You write ONE image prompt for a photorealistic photo of a single adult woman (21+) in a role-play chat.
+export const COMPOSER_SYSTEM = `You write ONE image prompt for a photorealistic photo of a single adult woman (18+) in a role-play chat.
 Output: ONLY a JSON object, no prose, no code fences, this exact shape:
 {"scene":"","action":"","pose":"","camera":"","lighting":"","outfit":"","outfit_state":"","background":"","expression":"","story":{"location":"","time_of_day":"","present":[],"outfit":"","outfit_state":"","action":""}}
 Rules:
@@ -316,7 +316,7 @@ export function composeInput(L, { style = 'real', angle = '', llmScene = '', var
   ].filter(Boolean).join('\n');
 }
 
-export function youthRisk(t) { MINOR_RX.lastIndex = 0; const hit = MINOR_RX.test(String(t || '')) || /looks about (1\d|20)\b|\b(1[0-9]|20)\s*(-?\s*)(jährig\w*|jahre\w*|years?[ -]old)/i.test(String(t || '')); MINOR_RX.lastIndex = 0; return hit; }
+export function youthRisk(t) { MINOR_RX.lastIndex = 0; const hit = MINOR_RX.test(String(t || '')) || /looks about (1[0-7])\b|\b(1[0-7])\s*(-?\s*)(jährig\w*|jahre\w*|years?[ -]old)/i.test(String(t || '')); MINOR_RX.lastIndex = 0; return hit; }
 export const normQuality = (q) => (Object.prototype.hasOwnProperty.call(MODEL_TABLE, String(q)) ? String(q) : 'single');
 // v68: Plan/Story/Seed/Prompt-Bau liegt in imgsvc-plan.js (ein Pfad), hier re-exportiert
 import { assemblePrompt as planAssemble } from './imgsvc-plan.js';

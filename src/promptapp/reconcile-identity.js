@@ -4,7 +4,7 @@
 //   2. Charakterkarte (card.data.extensions.jeffa.look/figur)
 //   3. Freitext (persona.look.typ, resolved.identity/look)
 // Konservativ: nur echte Widersprüche desselben Merkmals werden entfernt, alles andere bleibt stehen.
-// Jugendschutz: das Alter kommt aus resolveAge (immer >= 21); hier wird nie ein Alter gesenkt.
+// Jugendschutz: das Alter kommt aus resolveAge (immer >= 18); hier wird nie ein Alter gesenkt.
 import { low, tidy, deToEn } from './util.js';
 
 const RANGE_RX = /\b(?:in|of)\s+(?:her|his|the)\s+(\d0)s\b|\b(?:early|mid|late)\s+(\d0)s\b|\bmitte\s+(\d0)\b/i;
@@ -55,7 +55,7 @@ function fieldWinners(profile = {}, card = null) {
  * Nimmt die Identitäts-Segmente (Reihenfolge: figur-Zahlen zuerst, dann Felder, dann Freitext – siehe collectIdentitySegs)
  * und liefert { segs, notes } mit genau einem Wert pro Merkmal.
  * @param {string[]} segs
- * @param {{profile?:object, card?:object, age?:number, fieldSegs?:string[]}} opts  age = von resolveAge gewähltes Alter (>= 21);
+ * @param {{profile?:object, card?:object, age?:number, fieldSegs?:string[]}} opts  age = von resolveAge gewähltes Alter (>= 18);
  *   fieldSegs = Texte aus den figur-Einstellungsfeldern (Größe/Oberweite)
  */
 export function reconcileIdentitySegs(segs = [], { profile = {}, card = null, age = 0, fieldSegs = [] } = {}) {
@@ -63,7 +63,7 @@ export function reconcileIdentitySegs(segs = [], { profile = {}, card = null, ag
   let cur = (Array.isArray(segs) ? segs : []).slice();
 
   // 1) Alter: Segmente mit abweichender Altersangabe (> 5 Jahre) entfernen – Alterszeile kommt von buildIdentity.
-  if (age >= 21) {
+  if (age >= 18) {
     const dropped = cur.filter((s) => { const a = ageOf(s); return a && Math.abs(a - age) > 5; });
     if (dropped.length) cur = cur.filter((s) => !dropped.includes(s));
   }

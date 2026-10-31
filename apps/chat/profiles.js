@@ -488,7 +488,7 @@ export function buildImagePrompt(profile, me, castIds, opts = {}) {
   if (profile.persona?.look) {
     const look = profile.persona.look;
     if (look.typ) parts.push(C(look.typ));
-    if (look.age) { const _subj = String(profile.persona?.gender || '').toLowerCase() === 'male' ? 'adult man' : 'adult woman'; parts.push(`${_subj}, looks exactly ${Math.max(21, +look.age || 25)} years old`); }
+    if (look.age) { const _subj = String(profile.persona?.gender || '').toLowerCase() === 'male' ? 'adult man' : 'adult woman'; parts.push(`${_subj}, looks exactly ${Math.max(18, +look.age || 25)} years old`); }
     if (look.hair) parts.push(look.hair);
     if (look.style) parts.push(C(stylePrompt(look.style))); // v78 D5
     if (look.special?.length) parts.push(...look.special.map(C));
@@ -706,7 +706,7 @@ async function renderProfileEditor(root, profileId) {
         if (!r?.fields) { st.textContent = r?.message || 'Hat nicht geklappt – bitte nochmal drücken.'; return; }
         undo.push(Object.fromEntries(AF[sec].map(([sel, key]) => [key, root.querySelector(sel).value])));
         setF(r.fields); un.hidden = false; go.textContent = '🔄 Neu erzeugen'; st.textContent = '✅ Eingefügt – behalten, neu erzeugen oder rückgängig.';
-      } catch (e) { st.textContent = /21\+|not_adult|403/.test(String(e?.message || e)) ? 'Profil muss eindeutig erwachsen sein (21+)' : 'Fehler – bitte nochmal drücken.'; }
+      } catch (e) { st.textContent = /(18|21)\+|not_adult|403/.test(String(e?.message || e)) ? 'Profil muss eindeutig erwachsen sein (18+)' : 'Fehler – bitte nochmal drücken.'; }
       finally { go.disabled = false; }
     });
     un.addEventListener('click', () => { const prev = undo.pop(); if (prev) setF(prev); un.hidden = !undo.length; if (!undo.length) go.textContent = '✨ Automatisch ausfüllen'; st.textContent = '↩️ Vorheriger Text wiederhergestellt.'; });

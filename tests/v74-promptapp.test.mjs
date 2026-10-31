@@ -80,15 +80,15 @@ test('v74 identity: clothing words im profile style landen NICHT im identity-Blo
   assert.match(joined, /hair/i);
 });
 
-test('v74 identity: 21+-Regel – Profil ohne age bekommt 21, nie weniger', () => {
+test('v74 identity: 18+-Regel (v84) – Profil ohne age bekommt 18, nie weniger', () => {
   const { age, identity } = buildIdentity({ profile: { name: 'X', persona: { look: {} } }, resolved: {} });
-  assert.equal(age, 21);
-  assert.match(identity, /21 years old/);
+  assert.equal(age, 18);
+  assert.match(identity, /18 years old/);
 });
 
-test('v74 identity: profile.age < 18 → auf 21 geliftet', () => {
+test('v74 identity: profile.age < 18 → auf 18 geliftet', () => {
   const { age } = resolveAge({ persona: { look: { age: 17 } } }, {});
-  assert.equal(age, 21);
+  assert.equal(age, 18);
 });
 
 test('v74 identity: collectDefaultOutfitSegs findet nur Kleidungs-Phrasen', () => {
@@ -280,9 +280,9 @@ test('v81 non-18+: Bikini-Outfit wird im jugendfreien Modus ohne Ersatzwert gelo
 });
 
 // ---------- minor-risk ----------
-test('v74 minor-risk: buildImagePlan blockt Profil mit age<21 auf adult-Pfad', async () => {
+test('v74 minor-risk: buildImagePlan blockt Profil mit age<18 auf adult-Pfad', async () => {
   const out = await buildImagePlan({
-    profile: { adult: true, persona: { look: { age: 19 } } },
+    profile: { adult: true, persona: { look: { age: 17 } } },
     resolved: { identity: 'adult woman' }, body: { adult: true, context: { messages: [] } }, rnd: () => 0.4,
   });
   assert.ok(out.error, JSON.stringify(out));

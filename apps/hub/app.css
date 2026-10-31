@@ -553,3 +553,10 @@ textarea.typing-field { font-size: 16px !important; line-height: 1.4; padding: .
 .hdr-voice{background:none;border:0;color:inherit;opacity:.75;font-size:.72rem;padding:0;text-align:left;max-width:7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:700px){.hdr-voice{max-width:7rem;font-size:.7rem}}
 .voice-row{display:flex;gap:6px;align-items:center}.voice-row .model-opt{flex:1;min-width:0}.voice-row.sel .model-opt{outline:1px solid var(--accent,#22c55e)}
+
+
+/* v84b: Kacheln (Tabs) per Drag & Drop umsortieren */
+.tab-btn { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.tab-btn.dragging { opacity:.85; transform:scale(1.08); box-shadow:0 6px 18px rgba(0,0,0,.35); z-index:2; }
+nav.tabs-nav.reordering { touch-action:none; }
+nav.tabs-nav.reordering .tab-btn { transition:transform .12s; }

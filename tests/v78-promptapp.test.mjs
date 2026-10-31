@@ -24,9 +24,10 @@ test('male: buildIdentity nutzt "adult man" + "looks exactly 32 years old"', () 
   assert.match(r.identity, /^adult man, looks exactly 32 years old/);
 });
 
-test('Alter 19 → 21', () => {
-  const r = buildIdentity({ profile: { persona: { look: { age: 19 } } } });
-  assert.match(r.identity, /looks exactly 21 years old/);
+test('Alter 17 → 18 (v84), 19 bleibt 19', () => {
+  const r = buildIdentity({ profile: { persona: { look: { age: 17 } } } });
+  assert.match(r.identity, /looks exactly 18 years old/);
+  assert.match(buildIdentity({ profile: { persona: { look: { age: 19 } } } }).identity, /looks exactly 19 years old/);
 });
 
 test('scene-time: abends → evening', () => {

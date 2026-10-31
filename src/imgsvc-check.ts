@@ -50,7 +50,7 @@ function expectationText(e: CheckExpectation): string {
     e.pose && "pose: " + e.pose,
     e.scene && "scene: " + e.scene,
     e.intensity && "intensity (boldness): " + e.intensity,
-    "The subject is an adult woman 21+. Judge only visual match, do not add new content.",
+    "The subject is an adult woman 18+. Judge only visual match, do not add new content.",
   ].filter(Boolean).join("\n").slice(0, 1200);
 }
 
@@ -64,7 +64,7 @@ function costOf(usage: any): number {
 
 /** Vision-Check; liefert immer ein Objekt (Fehler → pass:true + error) */
 const VENICE_URL = "https://api.venice.ai/api/v1/chat/completions";
-const FOCUS_SYSTEM = 'You audit ONE AI-generated image of an adult fictional character (21+) for a prompt-QA tool. Reply with STRICT JSON only, start with {: {"eyes_visible":bool,"top_of_head_visible":bool,"garment":"nude|bikini|micro_bikini|swimsuit|lingerie|dress|latex|other","top_worn":bool (true ONLY if a top covers BOTH nipples with fabric),"bottom_worn":bool,"nipples_covered":bool (answer explicitly: are BOTH nipples covered by fabric? if either nipple or areola is exposed by a slipped triangle, pulled-aside fabric or a see-through gap, false),"triangles":"tiny|small|medium|large|none","scene_ok":bool,"extra_people":bool}. If a top is expected, look at BOTH breasts and state explicitly whether each nipple is covered by fabric.';
+const FOCUS_SYSTEM = 'You audit ONE AI-generated image of an adult fictional character (18+) for a prompt-QA tool. Reply with STRICT JSON only, start with {: {"eyes_visible":bool,"top_of_head_visible":bool,"garment":"nude|bikini|micro_bikini|swimsuit|lingerie|dress|latex|other","top_worn":bool (true ONLY if a top covers BOTH nipples with fabric),"bottom_worn":bool,"nipples_covered":bool (answer explicitly: are BOTH nipples covered by fabric? if either nipple or areola is exposed by a slipped triangle, pulled-aside fabric or a see-through gap, false),"triangles":"tiny|small|medium|large|none","scene_ok":bool,"extra_people":bool}. If a top is expected, look at BOTH breasts and state explicitly whether each nipple is covered by fabric.';
 const PRICES: Record<string, [number, number]> = { "gemma-4-uncensored": [0.1625, 0.5], "qwen3-vl-235b-a22b": [0.21, 1.9] };
 export function checkModels(env: Env): string[] {
   return [String(env.IMG_CHECK_MODEL || "gemma-4-uncensored"), String((env as any).IMG_CHECK_FALLBACK || "qwen3-vl-235b-a22b")];

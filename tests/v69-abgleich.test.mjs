@@ -43,7 +43,7 @@ test('Seraphina: „woman in her 20s“ + „looks about 48“ → 48 gewinnt, W
   assert.match(p.prompt, /48 years old|looks about 48/);
 });
 
-test('Adult-Pfad mit nur „in her 20s“ und ohne numerisches Alter ≥21 → block not_adult', async () => {
+test('Adult-Pfad mit nur „in her 20s“ und ohne numerisches Alter ≥18 → block not_adult', async () => {
   const profile = { ...LORA_PROFILE, persona: { look: { age: 0 } } };
   const resolved = { identity: 'Lora, woman in her 20s, long blonde hair, small A-cup bust' };
   const p = await buildImagePlan({
@@ -54,7 +54,7 @@ test('Adult-Pfad mit nur „in her 20s“ und ohne numerisches Alter ≥21 → b
   assert.ok(p.error, 'erwartet Block');
   assert.equal(p.error.status, 403);
   assert.equal(p.error.code, 'not_adult');
-  assert.match(p.error.message, /21\+/);
+  assert.match(p.error.message, /18\+/);
 });
 
 test('Nicht-18+-Pfad entfernt FSK18-Details aus Identität und Outfit', async () => {

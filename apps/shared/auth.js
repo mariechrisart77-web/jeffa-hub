@@ -19,44 +19,125 @@ export function b64urlDecode(str) {
   return bytes.buffer;
 }
 
+// v84b: iOS-Safari verlangt create/get SYNCHRON in der Nutzer-Geste.
+// Daher werden die Options vorab geladen (Prefetch) und im Klick-Handler sofort konsumiert.
+const waCache = new Map(); // kind -> { at:number, options:any }
+const WA_MAX_AGE_MS = 240000; // 240 s
+
+export function webauthnErrorText(err) {
+  const name = err && (err.name || err.code);
+  if (name === 'NotAllowedError') return 'Face ID abgebrochen oder nicht erlaubt – bitte nochmal tippen (oder PIN nutzen)';
+  if (name === 'InvalidStateError') return 'Dieses Gerät ist schon eingerichtet';
+  if (name === 'SecurityError') return 'Face ID geht nur auf https://jeffa-hub.pages.dev bzw. der Vorschau-Adresse';
+  if (name === 'MissingOptionsError') return 'Bitte nochmal tippen';
+  return (err && (err.message || err.name)) || 'Face ID nicht möglich';
+}
+
+function prepOptions(kind, options) {
+  const publicKey = { ...options };
+  publicKey.challenge = b64urlDecode(publicKey.challenge);
+  if (publicKey.user && publicKey.user.id) publicKey.user = { ...publicKey.user, id: b64urlDecode(publicKey.user.id) };
+  if (Array.isArray(publicKey.allowCredentials)) publicKey.allowCredentials = publicKey.allowCredentials.map(c => ({ ...c, id: b64urlDecode(c.id) }));
+  if (Array.isArray(publicKey.excludeCredentials)) publicKey.excludeCredentials = publicKey.excludeCredentials.map(c => ({ ...c, id: b64urlDecode(c.id) }));
+  waCache.set(kind, { at: Date.now(), options: publicKey });
+  return publicKey;
+}
+
+export function prefetchWebAuthn(kind) {
+  const path = kind === 'register' ? '/api/auth/webauthn/register/options' : '/api/auth/webauthn/login/options';
+  return api(path, { method: 'POST' }).then(options => { prepOptions(kind, options); return options; }).catch(() => { waCache.delete(kind); return null; });
+}
+
+function takeWebAuthnOptions(kind) {
+  const entry = waCache.get(kind);
+  if (!entry) return null;
+  waCache.delete(kind); // Challenges sind einmalig
+  if (Date.now() - entry.at > WA_MAX_AGE_MS) return null;
+  return entry.options;
+}
+
+function webAuthnMissingError() {
+  const e = new Error('Bitte nochmal tippen');
+  e.name = 'MissingOptionsError';
+  return e;
+}
+
+function normalizeCredError(e) {
+  const err = e instanceof Error ? e : new Error(String(e));
+  err.message = webauthnErrorText(err);
+  return err;
+}
+
 export async function registerWebAuthn() {
-  const options = await api('/api/auth/webauthn/register/options', { method: 'POST' });
-  options.challenge = b64urlDecode(options.challenge);
-  options.user.id = b64urlDecode(options.user.id);
-  const credential = await navigator.credentials.create({ publicKey: options });
-  await api('/api/auth/webauthn/register/verify', {
-    method: 'POST',
-    body: {
-      id: credential.id,
-      rawId: b64urlEncode(credential.rawId),
-      response: {
-        clientDataJSON: b64urlEncode(credential.response.clientDataJSON),
-        attestationObject: b64urlEncode(credential.response.attestationObject),
+  const cached = takeWebAuthnOptions('register');
+  if (!cached) {
+    prefetchWebAuthn('register').catch(() => {});
+    throw webAuthnMissingError();
+  }
+  let credential;
+  try {
+    credential = await navigator.credentials.create({ publicKey: cached });
+  } catch (e) {
+    prefetchWebAuthn('register').catch(() => {});
+    throw normalizeCredError(e);
+  }
+  if (!credential) {
+    prefetchWebAuthn('register').catch(() => {});
+    throw normalizeCredError(Object.assign(new Error('abgebrochen'), { name: 'NotAllowedError' }));
+  }
+  try {
+    const res = await api('/api/auth/webauthn/register/verify', {
+      method: 'POST',
+      body: {
+        id: credential.id,
+        rawId: b64urlEncode(credential.rawId),
+        response: {
+          clientDataJSON: b64urlEncode(credential.response.clientDataJSON),
+          attestationObject: b64urlEncode(credential.response.attestationObject),
+        },
       },
-    },
-  });
+    });
+    if (res && res.token) setSession(res.token);
+    return res;
+  } finally {
+    prefetchWebAuthn('register').catch(() => {});
+  }
 }
 
 export async function loginWebAuthn() {
-  const options = await api('/api/auth/webauthn/login/options', { method: 'POST' });
-  options.challenge = b64urlDecode(options.challenge);
-  if (options.allowCredentials) {
-    options.allowCredentials = options.allowCredentials.map(c => ({ ...c, id: b64urlDecode(c.id) }));
+  const cached = takeWebAuthnOptions('login');
+  if (!cached) {
+    prefetchWebAuthn('login').catch(() => {});
+    throw webAuthnMissingError();
   }
-  const assertion = await navigator.credentials.get({ publicKey: options });
-  const result = await api('/api/auth/webauthn/login/verify', {
-    method: 'POST',
-    body: {
-      id: assertion.id,
-      response: {
-        clientDataJSON: b64urlEncode(assertion.response.clientDataJSON),
-        authenticatorData: b64urlEncode(assertion.response.authenticatorData),
-        signature: b64urlEncode(assertion.response.signature),
+  let assertion;
+  try {
+    assertion = await navigator.credentials.get({ publicKey: cached });
+  } catch (e) {
+    prefetchWebAuthn('login').catch(() => {});
+    throw normalizeCredError(e);
+  }
+  if (!assertion) {
+    prefetchWebAuthn('login').catch(() => {});
+    throw normalizeCredError(Object.assign(new Error('abgebrochen'), { name: 'NotAllowedError' }));
+  }
+  try {
+    const result = await api('/api/auth/webauthn/login/verify', {
+      method: 'POST',
+      body: {
+        id: assertion.id,
+        response: {
+          clientDataJSON: b64urlEncode(assertion.response.clientDataJSON),
+          authenticatorData: b64urlEncode(assertion.response.authenticatorData),
+          signature: b64urlEncode(assertion.response.signature),
+        },
       },
-    },
-  });
-  setSession(result.token);
-  return result;
+    });
+    setSession(result.token);
+    return result;
+  } finally {
+    prefetchWebAuthn('login').catch(() => {});
+  }
 }
 
 export async function setupPin(pin) {
@@ -113,7 +194,7 @@ export async function ensureAdmin() {
     modal.innerHTML = `
 <div class="jf-modal-box">
   <h2>Admin-Zugriff erforderlich</h2>
-  ${faceIdEnabled() || !state.pinSet ? '<button class="primary webauthn-btn">🔐 Face ID / Touch ID</button>' : ''}
+  ${(() => { const showId = state.passkeys > 0 && faceIdEnabled(); const needSetup = state.passkeys === 0 && !state.pinSet; return (showId || needSetup) ? `<button class="primary webauthn-btn">${needSetup ? '🔐 Face ID einrichten' : '🔐 Face ID / Touch ID'}</button>` : ''; })()}
   ${state.pinSet ? '<button class="primary pin-btn">🔢 PIN eingeben</button>' : ''}
   <button class="secondary cancel-btn">Abbrechen</button>
   <div class="error" style="display:none"></div>
@@ -127,16 +208,29 @@ export async function ensureAdmin() {
       setTimeout(() => err.style.display = 'none', 3000);
     };
 
-    modal.querySelector('.webauthn-btn').onclick = async () => {
-      try {
-        await loginWebAuthn();
-        const session = await authState();
-        modal.remove();
-        resolve(session.session);
-      } catch (e) {
-        showError(e.message || 'Face ID fehlgeschlagen');
-      }
-    };
+    const webauthnBtnMain = modal.querySelector('.webauthn-btn');
+    if (webauthnBtnMain) {
+      const doRegister = state.passkeys === 0 && !state.pinSet;
+      if (doRegister) prefetchWebAuthn('register').catch(() => {}); else prefetchWebAuthn('login').catch(() => {});
+      webauthnBtnMain.onclick = async () => {
+        try {
+          if (doRegister) {
+            await registerWebAuthn();
+            const session = await authState();
+            modal.remove();
+            resolve(session.session);
+          } else {
+            await loginWebAuthn();
+            const session = await authState();
+            modal.remove();
+            resolve(session.session);
+          }
+        } catch (e) {
+          showError(e.message || 'Face ID fehlgeschlagen');
+          if (doRegister) prefetchWebAuthn('register').catch(() => {}); else prefetchWebAuthn('login').catch(() => {});
+        }
+      };
+    }
 
     const pinBtn = modal.querySelector('.pin-btn');
     if (pinBtn) {
@@ -227,7 +321,7 @@ export async function lockScreen() {
     modal.innerHTML = `
 <div class="jf-modal-box">
   <h2>Jeffa entsperren</h2>
-  ${state.passkeys > 0 && (faceIdEnabled() || !state.pinSet) ? '<button class="primary webauthn-btn">🔐 Face ID / Touch ID</button>' : ''}
+  ${state.passkeys > 0 && faceIdEnabled() ? '<button class="primary webauthn-btn">🔐 Face ID / Touch ID</button>' : ''}
   ${state.pinSet ? '<button class="primary pin-btn">🔢 PIN eingeben</button>' : ''}
   ${!hasAuth ? '<button class="primary setup-btn">Einrichten</button><button class="secondary skip-btn">Später</button>' : ''}
   <div class="error" style="display:none"></div>
@@ -243,6 +337,7 @@ export async function lockScreen() {
 
     const webauthnBtn = modal.querySelector('.webauthn-btn');
     if (webauthnBtn) {
+      prefetchWebAuthn('login').catch(() => {});
       webauthnBtn.onclick = async () => {
         try {
           await loginWebAuthn();
@@ -250,6 +345,7 @@ export async function lockScreen() {
           resolve(true);
         } catch (e) {
           showError(e.message || 'Face ID fehlgeschlagen');
+          prefetchWebAuthn('login').catch(() => {});
         }
       };
     }
@@ -331,14 +427,18 @@ export async function lockScreen() {
 <button class="secondary back-btn">Zurück</button>
 <div class="error" style="display:none"></div>`;
 
-        modal.querySelector('.webauthn-setup').onclick = async () => {
+        prefetchWebAuthn('register').catch(() => {});
+        const setupWaBtn = modal.querySelector('.webauthn-setup');
+        if (setupWaBtn) setupWaBtn.onclick = async () => {
           try {
+            // v84b: register/verify liefert direkt eine Admin-Session – kein zweites get() (iOS).
             await registerWebAuthn();
-            await loginWebAuthn();
+            try { const s = JSON.parse(localStorage.getItem('jeffa.settings') || '{}'); s.faceId = true; localStorage.setItem('jeffa.settings', JSON.stringify(s)); } catch {}
             modal.remove();
             resolve(true);
           } catch (e) {
             showError(e.message || 'Setup fehlgeschlagen');
+            prefetchWebAuthn('register').catch(() => {});
           }
         };
 

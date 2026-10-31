@@ -83,7 +83,7 @@ export async function imageNewMode(ctx: EventContext<Env, any, any>, env: Env, b
 
   if ("error" in plan) {
     const e = (plan as any).error;
-    const msg = e.message || (e.code === "not_adult" ? "Profil muss eindeutig erwachsen sein (21+)" : undefined);
+    const msg = e.message || (e.code === "not_adult" ? "Profil muss eindeutig erwachsen sein (18+)" : undefined);
     return j(e.status || 400, e.code === "not_adult" ? { error: "not_adult", message: msg } : { error: e.code || "bad_request" });
   }
 

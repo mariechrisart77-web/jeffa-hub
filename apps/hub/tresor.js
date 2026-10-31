@@ -1,9 +1,11 @@
 import { api } from './shared/api.js';
-import { ensureAdmin, registerWebAuthn, setupPin, authState, logout } from './shared/auth.js';
+import { ensureAdmin, setupPin, authState, logout, prefetchWebAuthn, registerWebAuthn } from './shared/auth.js';
+import { balanceLabel } from './shared/balance.js';
 
 let keys = [];
 let tokens = [];
 let docs = [];
+let balances = null;
 let state = null;
 
 export async function init(root) {
@@ -34,6 +36,8 @@ async function load() {
     keys = await api('/api/vault/keys', { auth: true });
     tokens = await api('/api/auth/tokens', { auth: true });
     docs = await api('/api/docs', { auth: true }).catch(() => []);
+    // v84b: Restguthaben je Anbieter (Fehler → null, Anzeige "Guthaben nicht abrufbar").
+    balances = await api('/api/balances', { auth: true }).catch(() => null);
   } catch (err) {
     toast(err.message || 'Fehler beim Laden', 'error');
   }
@@ -63,6 +67,7 @@ function render(root) {
             ${source === 'vault' ? `Vault ${enabled ? '(aktiv)' : '(deaktiviert)'}` : source === 'env' ? 'Env Secret' : 'Nicht konfiguriert'}
             ${last4 ? ` · ···${last4}` : ''}
           </div>
+          <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.25rem;">💰 ${esc(balanceLabel(balances ? balances[p] : null))}</div>
         </div>
         <div style="display:flex;gap:0.5rem;">
           ${source !== 'none' ? `<button class="btn-secondary" data-reveal="${p}" style="padding:0.5rem 0.75rem;font-size:0.85rem;">Anzeigen</button>` : ''}
@@ -85,6 +90,7 @@ function render(root) {
         ${state.passkeys > 0 ? `${state.passkeys} Passkey${state.passkeys > 1 ? 's' : ''} registriert` : 'Kein Passkey registriert'}
       </div>
       <button class="btn-primary" id="register-passkey">Neuen Passkey registrieren</button>
+      <div class="hint" style="margin-top:0.5rem">Auf dem iPhone Face ID im Systemdialog bestätigen.</div>
     </div>
     <div class="card">
       <div style="font-weight:600;margin-bottom:0.5rem;">PIN</div>
@@ -177,14 +183,19 @@ function render(root) {
   
   const passkeyBtn = root.querySelector('#register-passkey');
   if (passkeyBtn) {
+    // v84b: Options vorab laden, damit navigator.credentials.create direkt in der Nutzer-Geste läuft (iOS-Safari).
+    prefetchWebAuthn('register').catch(() => {});
     passkeyBtn.addEventListener('click', async () => {
       try {
         await registerWebAuthn();
-        toast('Passkey registriert');
+        try { const s = JSON.parse(localStorage.getItem('jeffa.settings') || '{}'); s.faceId = true; localStorage.setItem('jeffa.settings', JSON.stringify(s)); } catch {}
+        toast('Face ID eingerichtet ✓');
         state = await authState();
+        prefetchWebAuthn('register').catch(() => {});
         render(root);
       } catch (err) {
         toast(err.message || 'Fehler', 'error');
+        prefetchWebAuthn('register').catch(() => {});
       }
     });
   }

@@ -39,7 +39,7 @@ const mkRx = (list) => new RegExp(
 const FSK18_RX = mkRx(FSK18_PHRASES);
 const BED_RX = mkRx(BED_PHRASES);
 
-/** Faulheit-Trick: 21+ nur wenn Flag gesetzt */
+/** Faulheit-Trick: 18+ nur wenn Flag gesetzt */
 export function isExplicitAdult(profile = {}) {
   return profile.adult === true || profile.fsk === true || profile.fsk18 === true;
 }

@@ -14,7 +14,7 @@ export function makeCheckSpec({ framing = FRAMING, garment, sceneText }) {
 }
 
 /** Vision-System-Prompt für Venice gemma-4-uncensored */
-export const CHECK_SYSTEM = `You audit ONE AI-generated image of a fictional adult character (21+) for a prompt-QA tool. Strict JSON only:
+export const CHECK_SYSTEM = `You audit ONE AI-generated image of a fictional adult character (18+) for a prompt-QA tool. Strict JSON only:
 {"eyes_visible":bool,"top_of_head_visible":bool,"garment":"nude|bikini|micro_bikini|swimsuit|lingerie|dress|latex|other","top_worn":bool,"bottom_worn":bool,"nipples_covered":bool,"scene_ok":bool,"extra_people":bool}
 Rules:
 - eyes_visible + top_of_head_visible = BOTH eyes and the top of the head are inside the frame.

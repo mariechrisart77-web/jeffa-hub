@@ -57,11 +57,11 @@ export function resolveAge(profile = {}, resolved = {}) {
   // v75: keine Pseudo-Alter aus Story-Text (205 etc.) übernehmen
   const ranges = rangeCandidates(texts);
 
-  const numeric = candidates.filter((c) => c.n >= 21);
-  if (!candidates.length && !ranges.length) return { age: 21, note: '' };
+  const numeric = candidates.filter((c) => c.n >= 18);
+  if (!candidates.length && !ranges.length) return { age: 18, note: '' };
   if (!numeric.length) {
-    // nur <21-Angaben oder nur Ranges → auf 21 heben
-    return { age: 21, note: '' };
+    // nur <18-Angaben oder nur Ranges → auf 18 heben
+    return { age: 18, note: '' };
   }
   const pick = numeric[0];
   const conflicts = candidates.filter((c) => c.n !== pick.n && Math.abs(c.n - pick.n) > 5 && !isBogusAge(c.n));
@@ -174,7 +174,7 @@ const SLOT_PATTERNS = {
 
 /**
  * Baut den finalen Identitätsblock. Regeln:
- * - Erste Zeile: "<noun>, N years old" (NIE <21)
+ * - Erste Zeile: "<noun>, N years old" (NIE <18)
  * - danach: face, hair, eyes, skin, body, tattoos, piercings – Reihenfolge stabil
  * - keine Kleidungs-Wörter, keine Alters-Ranges
  */
@@ -185,10 +185,10 @@ export function buildIdentity({ profile = {}, resolved = {}, card = null, adult 
   // v83: EIN Wert pro Merkmal (Alter, Haarfarbe, Hautton, Größe, Oberweite) – Einstellungsfeld vor Freitext.
   const fig83 = profile.persona?.figur || profile.figur || card?.data?.extensions?.jeffa?.figur || {};
   const fieldSegs83 = figureText(fig83, String((profile.persona?.look || profile.look || {}).statur || '').trim(), profile.persona?.model || profile.model || '');
-  const rec = reconcileIdentitySegs(collectIdentitySegs(profile, resolved, card), { profile, card, age: Math.max(21, +age || 21), fieldSegs: fieldSegs83 });
+  const rec = reconcileIdentitySegs(collectIdentitySegs(profile, resolved, card), { profile, card, age: Math.max(18, +age || 18), fieldSegs: fieldSegs83 });
   for (const n of rec.notes) notes.push(n);
   const { noun } = genderOf(profile, card);
-  // v78: Alters-Optik – immer "looks exactly N years old" (N >= 21)
+  // v78: Alters-Optik – immer "looks exactly N years old" (N >= 18)
   const segs = rec.segs;
 
   // nicht-18+-Profile: FSK18-Merkmale aus der Identität entfernen
@@ -205,7 +205,7 @@ export function buildIdentity({ profile = {}, resolved = {}, card = null, adult 
     if (!placed) buckets.face.push(s);
   }
   const nameKey = low(String(profile.name || profile.id || ''));
-  const lines = [`${noun}, looks exactly ${Math.max(21, +age || 21)} years old`];
+  const lines = [`${noun}, looks exactly ${Math.max(18, +age || 18)} years old`];
   const picked = new Set([low(lines[0])]);
   // v75: mittelalterliche Floskel vermeiden, wenn numerisches Alter gewählt wurde
   const hasNumericAge = /^\d+$/.test(String(age));

@@ -5,7 +5,7 @@
 // Priorität (fest): Dropdown (resolved.photo.* / photoOverride) > Story (Composer parts / Chat) > Profil-Defaults.
 // Regeln sind tabellengetrieben: { id, test, fix, warn }.
 
-const AGE_MSG = 'Profil muss eindeutig erwachsen sein (21+)';
+const AGE_MSG = 'Profil muss eindeutig erwachsen sein (18+)';
 const MAX_WARN = 6;
 
 // ---------- Hilfen ----------
@@ -87,10 +87,10 @@ export function ageCandidates(text) {
 }
 function hasExplicit21Plus(text) {
   const { nums } = ageCandidates(text);
-  return nums.some((n) => n >= 21);
+  return nums.some((n) => n >= 18);
 }
 function identityAgePhrase(age) {
-  return `looks exactly ${Math.max(21, Math.round(age))} years old`;
+  return `looks exactly ${Math.max(18, Math.round(age))} years old`;
 }
 
 // ---------- FSK18 ----------
@@ -145,14 +145,14 @@ export function abgleich({ profile = {}, resolved = {}, photo = {}, parts = {}, 
 
   // ---------- Regel 1: Alter ----------
   {
-    // 21+-Sperre auf dem Adult-Pfad
+    // 18+-Sperre auf dem Adult-Pfad
     if (adult) {
       const nums = [];
       for (const m of identity.matchAll(LOOKS_ABOUT)) nums.push(+m[1]);
       for (const m of identity.matchAll(NUM_YEARS)) nums.push(+m[1]);
-      const explicit21 = nums.some((n) => n >= 21);
+      const explicit21 = nums.some((n) => n >= 18);
       const ambiguousOnly = !explicit21 && /\b(in her \d0s|early \d0s|mid \d0s|young|youthful)\b/i.test(identity);
-      if (!explicit21 && (ambiguousOnly || age && age < 21)) {
+      if (!explicit21 && (ambiguousOnly || age && age < 18)) {
         return { parts: P, identity, warnings, block: { code: 'not_adult', message: AGE_MSG } };
       }
     }
@@ -166,17 +166,17 @@ export function abgleich({ profile = {}, resolved = {}, photo = {}, parts = {}, 
       else if (/\b(in her \d0s|mid \d0s|young|youthful)\b/i.test(s)) ageSegs.push({ seg: s, value: 0 });
     }
     if (ageSegs.length > 1) {
-      // Ziel: das Segment, dessen Zahl dem Profilalter entspricht; sonst die höchste ≥21 (Adult-Pfad: kein Youthful hinzufügen)
+      // Ziel: das Segment, dessen Zahl dem Profilalter entspricht; sonst die höchste ≥18 (Adult-Pfad: kein Youthful hinzufügen)
       let keep;
       if (age > 0) keep = ageSegs.find((x) => x.value === age) || ageSegs.filter((x) => x.value > 0).sort((a, b) => b.value - a.value)[0];
-      else keep = ageSegs.filter((x) => x.value >= 21).sort((a, b) => b.value - a.value)[0] || ageSegs[0];
+      else keep = ageSegs.filter((x) => x.value >= 18).sort((a, b) => b.value - a.value)[0] || ageSegs[0];
       if (!keep) keep = ageSegs[ageSegs.length - 1];
       const drop = ageSegs.filter((x) => x !== keep);
       // Widerspruch nur wenn Zahlen sich unterscheiden (Mitte 20 vs looks about 25 sind sich einig)
       const conflict = drop.some((d) => d.value && keep.value && Math.abs(d.value - keep.value) > 5);
       if (drop.length) {
         identity = joinSegs(segs.filter((s) => !drop.some((d) => d.seg === s)));
-        if (adult && keep.value > 0 && keep.value < 21) {
+        if (adult && keep.value > 0 && keep.value < 18) {
           // Adult-Pfad + jugendliches Restalter → numerische Alter-Phrase erzwingen
           identity = identity.replace(new RegExp(keep.seg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), identityAgePhrase(age || 25));
         }
@@ -185,7 +185,7 @@ export function abgleich({ profile = {}, resolved = {}, photo = {}, parts = {}, 
     }
     // Narrative Jugend-Wörter entfernen, auf dem Adult-Pfad durch numerische Phrase ersetzen
     if (adult && /\b(in her \d0s|early \d0s|mid \d0s|young|youthful)\b/i.test(identity)) {
-      const n = age && age >= 21 ? age : 25;
+      const n = age && age >= 18 ? age : 25;
       identity = identity
         .replace(/\b(?:in|of)\s+(?:her|his|the)\s+\d0s\b/gi, '')
         .replace(/\b(early|mid|late)\s+\d0s\b/gi, '')

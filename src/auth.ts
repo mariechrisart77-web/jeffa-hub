@@ -1,5 +1,6 @@
 import { Env } from './env';
 import { sha256hex, randomToken, constantTimeCompare, pbkdf2, b64urlEncode } from './crypto';
+import { mergeCredIds } from './webauthn-util';
 
 export class AuthError extends Error {
   constructor(public status: number, public code: string, message: string) {
@@ -127,6 +128,14 @@ export async function verifyPin(env: Env, pin: string): Promise<boolean> {
 export async function getAuthState(env: Env): Promise<{ pinSet: boolean; passkeys: number }> {
   if (!env.KV) return { pinSet: false, passkeys: 0 };
   const pinSet = !!(await env.KV.get('auth:pin'));
+  // v84b: Index ∪ KV.list – KV.list ist eventual consistent (direkt nach dem Einrichten sonst 0).
+  // QA: KV-Fehler NICHT als „0 Passkeys" werten (sonst wäre die Ersteinrichtungs-Schranke offen) – nur kaputtes JSON tolerieren.
+  let idx: any = [];
+  try { const raw = await env.KV.get('auth:credidx'); idx = raw ? JSON.parse(raw) : []; } catch { idx = []; }
   const credList = await env.KV.list({ prefix: 'auth:cred:' });
-  return { pinSet, passkeys: credList.keys.length };
+  const passkeys = mergeCredIds(
+    Array.isArray(idx) ? idx.filter((v: any) => typeof v === 'string') : [],
+    credList.keys.map((k) => k.name.slice('auth:cred:'.length))
+  ).length;
+  return { pinSet, passkeys };
 }

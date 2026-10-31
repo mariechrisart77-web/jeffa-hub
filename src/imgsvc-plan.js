@@ -7,7 +7,7 @@ import { abgleich } from './imgsvc-abgleich.js';
 import { normalizeIntensity, intensityDefaults, intensityPose, poseForKind, poseKindOf, FRAMING, sharpTags } from './imgsvc-formulate.js';
 import { buildPromptPlan } from './promptapp/index.js';
 
-const AGE_MSG = 'Profil muss eindeutig erwachsen sein (21+)';
+const AGE_MSG = 'Profil muss eindeutig erwachsen sein (18+)';
 const NEG_ADULT_REAL = 'cartoon, 3d render, cgi, doll, plastic skin, airbrushed, stiff posed portrait';
 const NEG_ANATOMY = 'extra hands, extra arms, extra legs, extra fingers, missing fingers, fused fingers, fused limbs, deformed legs, malformed limbs, three hands';
 const WEIGHT_RX = /\(([^()]*?):\s*\d+(?:\.\d+)?\)/g;
@@ -37,13 +37,13 @@ export function compactIdentity(identity, max = 300) {
 
 // ---------- Composer (LLM, striktes JSON) ----------
 export const PART_KEYS = ['scene', 'action', 'pose', 'camera', 'lighting', 'outfit', 'outfit_state', 'background', 'expression'];
-export const COMPOSER_JSON_SYSTEM = 'You turn an ongoing role-play chat into the parts of ONE photo of the CURRENT moment of the story. Use the STORY STATE (what is true so far) and update it from the latest messages: earlier facts stay true unless the chat changes them (if they moved to the bedroom, the place is the bedroom; being wet only lasts within the SAME location – after a change of location set outfit_state to "" unless the new scene makes her wet again). Answer ONLY with JSON: {"scene":"","action":"","pose":"","camera":"","lighting":"","outfit":"","outfit_state":"","background":"","expression":"","story":{"location":"","time_of_day":"","present":[],"outfit":"","outfit_state":"","action":""}}. ALL values in English, short concrete visual phrases – translate every German word (places, colors, objects) into English. outfit_state is one of "", "wet", "torn", "dirty", "dry" ("dry" only when the chat says she dried off or changed). RULES: "pose" is ONE static, anatomically simple body position (an END STATE, never a motion verb – not "falling", "jumping", "sitting down", "walking"; use "lying on the sofa", "sitting on the bed", "kneeling on the floor"). "pose" contains AT MOST ONE explicit hand placement (e.g. "hands on her thighs") – do NOT stack several hand placements anywhere. "action" describes what she is doing at this moment and must NOT repeat the body position already in "pose" (no second position, no second hand placement). NEVER describe her face, hair, eyes, skin, age, ethnicity or body shape (added separately). NEVER add people: the photo shows only the woman unless the latest messages clearly say another person is physically present right now; then list them in story.present. All persons are adults (21+). No text in the image. Output only the JSON.';
+export const COMPOSER_JSON_SYSTEM = 'You turn an ongoing role-play chat into the parts of ONE photo of the CURRENT moment of the story. Use the STORY STATE (what is true so far) and update it from the latest messages: earlier facts stay true unless the chat changes them (if they moved to the bedroom, the place is the bedroom; being wet only lasts within the SAME location – after a change of location set outfit_state to "" unless the new scene makes her wet again). Answer ONLY with JSON: {"scene":"","action":"","pose":"","camera":"","lighting":"","outfit":"","outfit_state":"","background":"","expression":"","story":{"location":"","time_of_day":"","present":[],"outfit":"","outfit_state":"","action":""}}. ALL values in English, short concrete visual phrases – translate every German word (places, colors, objects) into English. outfit_state is one of "", "wet", "torn", "dirty", "dry" ("dry" only when the chat says she dried off or changed). RULES: "pose" is ONE static, anatomically simple body position (an END STATE, never a motion verb – not "falling", "jumping", "sitting down", "walking"; use "lying on the sofa", "sitting on the bed", "kneeling on the floor"). "pose" contains AT MOST ONE explicit hand placement (e.g. "hands on her thighs") – do NOT stack several hand placements anywhere. "action" describes what she is doing at this moment and must NOT repeat the body position already in "pose" (no second position, no second hand placement). NEVER describe her face, hair, eyes, skin, age, ethnicity or body shape (added separately). NEVER add people: the photo shows only the woman unless the latest messages clearly say another person is physically present right now; then list them in story.present. All persons are adults (18+). No text in the image. Output only the JSON.';
 /** Composer-Anweisung; für 18+-Profile mit Pose-Intensität zusätzlich "bold pose" – nur adult. */
 export function composerSystemFor({ adult = false, intensity = '' } = {}) {
   if (!adult) return COMPOSER_JSON_SYSTEM;
   const k = normalizeIntensity(intensity);
   if (k === 'stark' || k === 'offen') {
-    return COMPOSER_JSON_SYSTEM + ' POSE INTENSITY (adult 21+ character, exhibitionistic): the "pose" and "action" must be BOLD, confident, open, inviting and lively – showing off her body to the camera' + (k === 'stark' ? ' (legs spread wide, arched back, hips pushed forward, proudly exhibitionistic, candid dynamic moment)' : ' (confident open stance, playful inviting body language)') + '. Still exactly ONE static body position, at most ONE hand placement, no motion verbs.';
+    return COMPOSER_JSON_SYSTEM + ' POSE INTENSITY (adult 18+ character, exhibitionistic): the "pose" and "action" must be BOLD, confident, open, inviting and lively – showing off her body to the camera' + (k === 'stark' ? ' (legs spread wide, arched back, hips pushed forward, proudly exhibitionistic, candid dynamic moment)' : ' (confident open stance, playful inviting body language)') + '. Still exactly ONE static body position, at most ONE hand placement, no motion verbs.';
   }
   return COMPOSER_JSON_SYSTEM;
 }
@@ -258,7 +258,7 @@ const PROMPTAPP_MODELS = new Set(['lustify-v8', 'chroma', 'qwen-image-3', 'qwen-
 /** pure Plan-Funktion; imageNewMode macht nur I/O drumherum. composeLLM(system, input) → Text (optional). */
 export async function buildImagePlan({ profile = {}, resolved = {}, card = null, corrections = {}, body = {}, prevStory = null, composeLLM = null, rnd = Math.random, hasRef = false, refMode = 'off' } = {}) {
   const adult = body.adult === true;
-  // Altersschutz 21+ vor allem anderen (auch dryRun)
+  // Altersschutz 18+ vor allem anderen (auch dryRun)
   if (adult && (minorRisk(profile, resolved) || youthRisk(body.context?.scene))) return { error: { status: 403, code: 'not_adult', message: AGE_MSG } };
   let res = resolved || {};
   const po = body.photoOverride;

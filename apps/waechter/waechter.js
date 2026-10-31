@@ -1,4 +1,5 @@
 import { api, getSession } from './shared/api.js';
+import { balanceLabel } from './shared/balance.js';
 
 const withTimeout = (pr, ms = 8000) => Promise.race([pr, new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error('Zeitüberschreitung'), { code: 'timeout' })), ms))]);
 let loadedOnce = false;
@@ -91,7 +92,8 @@ function render() {
     if (activeDetail === p) tileClass += ' active';
     
     const tokens = usageToday.promptTokens + usageToday.outputTokens || 0;
-    const balText = balance?.balanceUsd != null ? `$${Math.max(0, balance.balanceUsd).toFixed(2)}` : '';
+    // v84b: Guthaben-Zeile je Anbieter (nur wenn /api/balances geladen ist).
+    const balText = state.balances ? '💰 ' + balanceLabel(balance) : '';
     
     html += `
       <div class="${tileClass}" data-provider="${p}">
@@ -210,8 +212,9 @@ function renderProviderDetail(provider) {
   const usageToday = usage.today || {};
   const balance = state.balances?.[provider] || {};
   const statusData = state.status?.providers || {};
+  const skName = provider === 'gemini' ? 'google-ai-studio' : provider;
   
-  const keySource = statusData[provider] || statusData.grok ? 'vault/env' : 'none';
+  const keySource = statusData[skName] || statusData[provider] || (provider === 'xai' && statusData.grok) ? 'vault/env' : 'none';
   
   let html = `
     <div class="detail-panel">
@@ -235,22 +238,19 @@ function renderProviderDetail(provider) {
   html += `<div class="detail-item"><div class="detail-item-label">Kosten</div><div class="detail-item-value">$${(usage.costUsd || 0).toFixed(4)}</div></div>`;
   html += '</div></div>';
   
-  if (balance.ok) {
-    html += '<div class="detail-section"><div class="detail-label">Guthaben</div>';
-    if (balance.balanceUsd != null) {
-      html += `<div class="detail-value">$${balance.balanceUsd.toFixed(2)}</div>`;
-    }
-    if (balance.usedUsd != null) {
-      html += `<div class="detail-value" style="margin-top:0.25rem;font-size:0.85rem;color:var(--text-secondary)">Genutzt: $${balance.usedUsd.toFixed(2)}</div>`;
-    }
-    if (balance.limitUsd != null) {
-      html += `<div class="detail-value" style="margin-top:0.25rem;font-size:0.85rem;color:var(--text-secondary)">Limit: $${balance.limitUsd.toFixed(2)}</div>`;
-    }
-    if (balance.note) {
-      html += `<div class="detail-value" style="margin-top:0.5rem;font-size:0.85rem;color:var(--text-tertiary)">${balance.note}</div>`;
-    }
-    html += '</div>';
+  // v84b: Guthaben-Abschnitt immer zeigen (auch bei available:false mit Hinweistext), DIEM korrekt.
+  html += '<div class="detail-section"><div class="detail-label">Guthaben</div>';
+  html += `<div class="detail-value">${esc(balanceLabel(balance))}</div>`;
+  if (balance.usedUsd != null) {
+    html += `<div class="detail-value" style="margin-top:0.25rem;font-size:0.85rem;color:var(--text-secondary)">Genutzt: $${Number(balance.usedUsd).toFixed(2)}</div>`;
   }
+  if (balance.limitUsd != null) {
+    html += `<div class="detail-value" style="margin-top:0.25rem;font-size:0.85rem;color:var(--text-secondary)">Limit: $${Number(balance.limitUsd).toFixed(2)}</div>`;
+  }
+  if (balance.note && (balance.balanceUsd != null || balance.usedUsd != null)) {
+    html += `<div class="detail-value" style="margin-top:0.5rem;font-size:0.85rem;color:var(--text-tertiary)">${esc(balance.note)}</div>`;
+  }
+  html += '</div>';
   
   html += `<div class="detail-section">
     <div class="detail-label">Schlüssel</div>
@@ -408,6 +408,9 @@ function getProviderName(key) {
     hf: 'Hugging Face',
     xai: 'xAI',
     vnaipro: 'Claude Gateway (VNAIPro)',
+    groq: 'Groq',
+    mistral: 'Mistral',
+    runware: 'Runware',
     'edge-tts': 'Edge TTS',
     gateway: 'Gateway',
     d1: 'D1'

@@ -3,6 +3,7 @@ import { AuthError, getSession, requireRole, createSession, checkPinLock, record
 import { createRegistrationOptions, verifyRegistration, createLoginOptions, verifyLogin } from "../../../src/webauthn";
 import { sha256hex, randomToken } from "../../../src/crypto";
 import { checkRateLimit, clientKey } from "../../../src/ratelimit";
+import { rpIdFor } from "../../../src/webauthn-util";
 
 export const onRequest: PagesFunction<Env> = async (ctx) => {
   if (!ctx.env.KV) return new Response(JSON.stringify({ error: { code: 'kv_missing', message: 'KV nicht verfügbar' } }), { status: 503, headers: { 'content-type': 'application/json' } });
@@ -62,26 +63,36 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
       if (state.pinSet || state.passkeys > 0) throw new AuthError(403, 'forbidden', 'Passkey oder PIN bereits vorhanden');
     }
     const origin = new URL(ctx.request.url).origin;
-    const rpId = ctx.env.RP_ID || new URL(ctx.request.url).hostname;
+    const rpId = rpIdFor(new URL(ctx.request.url).hostname, ctx.env.RP_ID);
     const options = await createRegistrationOptions(ctx.env, rpId, origin);
     return json(options);
   }
 
   if (path === '/webauthn/register/verify' && method === 'POST') {
     await checkRateLimit(ctx.env, ip);
+    // v84b: gleiche Schranke wie bei register/options – verify stellt jetzt eine Admin-Session aus.
+    {
+      const session = await getSession(ctx);
+      if (session?.role !== 'admin') {
+        const state = await getAuthState(ctx.env);
+        if (state.pinSet || state.passkeys > 0) throw new AuthError(403, 'forbidden', 'Passkey oder PIN bereits vorhanden');
+      }
+    }
     const body = await ctx.request.json();
     const origin = new URL(ctx.request.url).origin;
-    const rpId = ctx.env.RP_ID || new URL(ctx.request.url).hostname;
+    const rpId = rpIdFor(new URL(ctx.request.url).hostname, ctx.env.RP_ID);
     try { await verifyRegistration(ctx.env, rpId, origin, body); } catch (e: any) {
       if (e instanceof AuthError) throw e;
       throw new AuthError(400, 'webauthn_parse', 'Face ID: Antwort des Geräts nicht lesbar (' + String(e?.message || e).slice(0, 120) + ')');
     }
-    return json({ ok: true });
+    // v84b: Nach der Registrierung direkt eine Admin-Session ausstellen (iOS: kein zweites get() nach der Geste).
+    const token = await createSession(ctx.env, 'admin', 'webauthn');
+    return json({ ok: true, token, role: 'admin' });
   }
 
   if (path === '/webauthn/login/options' && method === 'POST') {
     await checkRateLimit(ctx.env, ip);
-    const rpId = ctx.env.RP_ID || new URL(ctx.request.url).hostname;
+    const rpId = rpIdFor(new URL(ctx.request.url).hostname, ctx.env.RP_ID);
     const options = await createLoginOptions(ctx.env, rpId);
     return json(options);
   }
@@ -90,7 +101,7 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
     await checkRateLimit(ctx.env, ip);
     const body = await ctx.request.json();
     const origin = new URL(ctx.request.url).origin;
-    const rpId = ctx.env.RP_ID || new URL(ctx.request.url).hostname;
+    const rpId = rpIdFor(new URL(ctx.request.url).hostname, ctx.env.RP_ID);
     try { await verifyLogin(ctx.env, rpId, origin, body); } catch (e: any) {
       if (e instanceof AuthError) throw e;
       throw new AuthError(400, 'webauthn_parse', 'Face ID: Antwort des Geräts nicht lesbar (' + String(e?.message || e).slice(0, 120) + ')');

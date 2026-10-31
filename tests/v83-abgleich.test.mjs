@@ -35,10 +35,10 @@ test('v83 (1) Haarfarbe: Einstellungsfeld schlägt Freitext', () => {
   assert.ok(!/black hair/i.test(identity), identity);
 });
 
-test('v83 (1) Jugendschutz bleibt: Einstellungsfeld < 21 wird nie übernommen, 21+-Sperre greift', async () => {
+test('v83 (1) Jugendschutz bleibt: Einstellungsfeld < 18 wird nie übernommen, 18+-Sperre greift (v84)', async () => {
   const { age } = buildIdentity({ profile: { persona: { look: { age: 17 } } }, resolved: { identity: 'looks about 17' } });
-  assert.ok(age >= 21);
-  const p = await buildImagePlan({ profile: { ...LORA, persona: { look: { age: 19 } } }, resolved: {}, body: { adult: true, dryRun: true, context: { scene: 'am Strand' } }, rnd: () => 0.5 });
+  assert.ok(age >= 18);
+  const p = await buildImagePlan({ profile: { ...LORA, persona: { look: { age: 17 } } }, resolved: {}, body: { adult: true, dryRun: true, context: { scene: 'am Strand' } }, rnd: () => 0.5 });
   assert.equal(p.error?.code, 'not_adult');
   const q = await buildImagePlan({ profile: LORA, resolved: {}, body: { adult: true, dryRun: true, context: { scene: 'teen girl am Strand' } }, rnd: () => 0.5 });
   assert.equal(q.error?.code, 'not_adult');

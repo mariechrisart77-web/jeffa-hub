@@ -60,11 +60,11 @@ test('keine Extra-Personen: Filter im Plan + Solo-Negativ; erlaubt nur wenn Chat
   assert.ok(!/\b(man|boyfriend|crowd)\b/i.test(q.prompt), q.prompt);
 });
 
-test('21+-Sperre auf dem einzigen Pfad (auch dryRun) + Jugend-Wörter werden entfernt', async () => {
-  const young = { ...PROFILE, persona: { look: { age: 19 } } };
+test('18+-Sperre auf dem einzigen Pfad (auch dryRun) + Jugend-Wörter werden entfernt', async () => {
+  const young = { ...PROFILE, persona: { look: { age: 17 } } };
   assert.equal(minorRisk(young, {}), true);
   const r = await buildImagePlan({ profile: young, resolved: { identity: 'adult woman' }, body: { adult: true, dryRun: true, context: { messages: [] } } });
-  assert.equal(r.error.status, 403); assert.match(r.error.message, /21\+/);
+  assert.equal(r.error.status, 403); assert.match(r.error.message, /18\+/);
   const r2 = await plan({ adult: true, context: { scene: 'schoolgirl outfit' } });
   assert.equal(r2.error?.status, 403);
   const h = fs.readFileSync('src/bild/image-handler.ts', 'utf8');

@@ -5,7 +5,8 @@ export class APIError extends Error {
 // v57: persistent session in localStorage (sessionStorage is wiped when an iOS standalone PWA is closed).
 export function getSession() { try { let t = localStorage.getItem('jeffa.session') || ''; if (!t) { t = sessionStorage.getItem('jeffa.session') || ''; if (t) { localStorage.setItem('jeffa.session', t); sessionStorage.removeItem('jeffa.session'); } } return t; } catch { return ''; } }
 export function setSession(t) { try { t ? localStorage.setItem('jeffa.session', t) : localStorage.removeItem('jeffa.session'); sessionStorage.removeItem('jeffa.session'); } catch {} }
-export function faceIdEnabled() { try { return JSON.parse(localStorage.getItem('jeffa.settings') || '{}').faceId === true; } catch { return false; } }
+// v84b: Standard AN, solange die Einstellung nie explizit auf false gesetzt wurde.
+export function faceIdEnabled() { try { return JSON.parse(localStorage.getItem('jeffa.settings') || '{}').faceId !== false; } catch { return true; } }
 function isPrivate() { try { return JSON.parse(localStorage.getItem('jeffa.settings') || '{}').encrypt === true; } catch { return false; } }
 function headers(extra = {}, auth = true) {
   const h = { 'content-type': 'application/json', ...extra };
