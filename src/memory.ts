@@ -1,5 +1,6 @@
 import { Env } from "./env";
 import { callModel, ChatMessage } from "./providers";
+import { filterForProfile, scopeForFact } from "./memory-scope.js";
 
 export interface Memory { id: number; scope: string; fact: string; created_at: string }
 const norm = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9äöüß ]/g, " ");
@@ -13,8 +14,9 @@ export async function listMemories(env: Env, scopes: string[]): Promise<Memory[]
 }
 
 /** Pick the most relevant compact notes for the current conversation (keyword overlap + recency), max ~maxChars. */
-export async function relevantMemories(env: Env, profileId: string | undefined, query: string, max = 8, maxChars = 700): Promise<string[]> {
-  const all = await listMemories(env, ["user", ...(profileId ? [`p:${profileId}`] : [])]);
+export async function relevantMemories(env: Env, profileId: string | undefined, query: string, max = 8, maxChars = 700, otherNames?: string[]): Promise<string[]> {
+  const raw = await listMemories(env, ["user", ...(profileId ? [`p:${profileId}`] : [])]);
+  const all = filterForProfile(raw, { profileId, otherNames }) as Memory[];
   if (!all.length) return [];
   const qw = words(query);
   const scored = all.map((m, i) => {
@@ -28,12 +30,12 @@ export async function relevantMemories(env: Env, profileId: string | undefined, 
 }
 
 /** Cheap fact extraction via Flash-Lite; dedups against existing notes. */
-export async function extractMemories(env: Env, profileId: string | undefined, messages: ChatMessage[]): Promise<string[]> {
+export async function extractMemories(env: Env, profileId: string | undefined, messages: ChatMessage[], opts?: { profileName?: string; otherNames?: string[] }): Promise<string[]> {
   if (!env.DB) return [];
   const convo = messages.slice(-6).map((m) => `${m.role === "user" ? "Nutzer" : "KI"}: ${String(m.content).slice(0, 1200)}`).join("\n");
   if (convo.length < 40) return [];
   const existing = await listMemories(env, ["user", ...(profileId ? [`p:${profileId}`] : [])]);
-  const sys = "Extrahiere aus dem Chat NUR neue, dauerhaft nützliche Fakten über den Nutzer (Name, Vorlieben, Projekte, Personen, Ziele, Abmachungen). Keine Smalltalk-Details, keine Fakten über die KI. Antworte ausschließlich als JSON: {\"facts\":[{\"fact\":\"kurzer Satz, max 120 Zeichen\",\"scope\":\"user|profile\"}]} — scope=profile nur für Dinge, die nur diese Figur/Beziehung betreffen. Leeres Array, wenn nichts Neues. Bereits bekannt:\n" +
+  const sys = "Extrahiere aus dem Chat NUR neue, dauerhaft nützliche Fakten über den Nutzer (Name, Vorlieben, Projekte, Personen, Ziele, Abmachungen). Keine Smalltalk-Details, keine Fakten über die KI. Antworte ausschließlich als JSON: {\"facts\":[{\"fact\":\"kurzer Satz, max 120 Zeichen\",\"scope\":\"user|profile\"}]} — scope=profile nur für Dinge, die nur diese Figur/Beziehung betreffen. Niemals Name, Rolle oder Eigenschaften der KI-Figur als Nutzer-Fakt speichern. Leeres Array, wenn nichts Neues. Bereits bekannt:\n" +
     existing.slice(0, 40).map((m) => `- ${m.fact}`).join("\n");
   const r = await callModel(env, { model: "gemini-3.5-flash-lite", system: sys, messages: [{ role: "user", content: convo }], maxTokens: 300 });
   let facts: Array<{ fact: string; scope?: string }> = [];
@@ -44,7 +46,7 @@ export async function extractMemories(env: Env, profileId: string | undefined, m
     const fact = String(f.fact || "").trim().slice(0, 160); if (fact.length < 5) continue;
     const fw = words(fact);
     if (known.some((k) => { let o = 0; for (const w of fw) if (k.has(w)) o++; return fw.size && o / fw.size > 0.7; })) continue;
-    const scope = f.scope === "profile" && profileId ? `p:${profileId}` : "user";
+    const scope = scopeForFact(f.scope === "profile" ? "profile" : "user", fact, { profileId, profileName: opts?.profileName, otherNames: opts?.otherNames });
     await env.DB.prepare("INSERT INTO memories (scope, fact) VALUES (?, ?)").bind(scope, fact).run();
     known.push(fw); saved.push(fact);
   }

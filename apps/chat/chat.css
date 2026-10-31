@@ -126,3 +126,6 @@ body.chat-immersive #tab-chat.tab-panel.active { padding-top: env(safe-area-inse
   #tab-bot .bot-list{padding-left:max(0px, env(safe-area-inset-left)); padding-right:max(0px, env(safe-area-inset-right))}
   #tab-bot .bot-msg{max-width:100%; width:100%; align-self:stretch; border-radius:0}
 }
+
+
+.chip.speaking { background: var(--accent, #8b5cf6); }

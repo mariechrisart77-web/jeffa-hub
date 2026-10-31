@@ -2,7 +2,7 @@ import { convMeta, relTime } from './convmeta.js';
 import { chatMode, effectiveAdult } from './shared/mode.js';
 import { api, streamChat } from './shared/api.js';
 import { encryptJSON, decryptJSON, isEncryptOn } from './shared/crypto.js';
-import { getProfiles, getProfile, getActiveProfile, setActiveProfile, updateProfile, addProfile, onProfilesChanged, buildImagePrompt, addFeedbackNote, syncProfileNow, resolveForServer } from './profiles.js';
+import { getProfiles, getAllProfiles, getProfile, getActiveProfile, setActiveProfile, updateProfile, addProfile, onProfilesChanged, buildImagePrompt, addFeedbackNote, syncProfileNow, resolveForServer } from './profiles.js';
 let imageClientPromise = null;
 const loadImageClient = async () => {
   if (!imageClientPromise) imageClientPromise = import('./image-client.js');
@@ -14,6 +14,8 @@ const loadImageClient = async () => {
 };
 import { nextAngle } from './imginfo.js';
 import { renderMarkdown } from './shared/markdown.js';
+import { castLine, otherProfileNames, identityAnchor, capSystem } from './sysprompt.js';
+import { liteCopy, mergeStores, pickConvForProfile, idbGet, idbSet } from './convstore.js';
 const speak = (...a) => import('./shared/tts.js').then((m) => m.speak(...a)); // v63: TTS loads on demand
 import { setupTyping } from './shared/typing.js';
 import { isAdult } from './shared/fsk.js';
@@ -31,11 +33,50 @@ let drawer = null;
 let overlay = null;
 let attachSheet = null;
 let cast = [];
+let speakingNow = null; // v82 C1: Nachrichten-ID, die gerade vorgelesen wird
+let ttsOff = null;
+
+async function initTts() {
+  if (ttsOff) return;
+  try {
+    const m = await import('./shared/tts.js');
+    speakingNow = m.isSpeaking() ? m.speakingId() : null;
+    ttsOff = m.onTtsChange(({ speaking, id }) => { speakingNow = speaking ? id : null; paintTts(); });
+  } catch {}
+}
+
+function paintTts() {
+  if (!root) return;
+  root.querySelectorAll('.chip[data-action="speak"]').forEach((chip) => {
+    const on = !!speakingNow && chip.dataset.id === speakingNow;
+    chip.classList.toggle('speaking', on);
+    chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+    chip.textContent = on ? '⏹ Stopp' : '🔊 Vorlesen';
+  });
+  const btn = root.querySelector('#tts-stop');
+  if (btn) btn.classList.toggle('hidden', !speakingNow);
+}
+
+function stopTts() {
+  if (!speakingNow) return;
+  import('./shared/tts.js').then((m) => m.stopSpeaking()).catch(() => {});
+}
+
+function toggleSpeak(msg, profile) {
+  if (!msg) return;
+  if (speakingNow && speakingNow === msg.id) { stopTts(); return; }
+  import('./shared/tts.js').then((m) => {
+    speakingNow = msg.id;
+    paintTts();
+    return m.speak(msg.content, profile?.voice, profile?.language, { id: msg.id });
+  }).catch(() => toast('Vorlesen nicht möglich'));
+}
 
 export async function initChat(rootEl) {
   root = rootEl;
   await loadStore();
   render();
+  initTts();
   onProfilesChanged(() => renderSidebar());
   window.addEventListener('jeffa:image', (e) => {
     if (e.detail?.prompt) loadImageClient().then((fn) => fn({ prompt: e.detail.prompt }));
@@ -57,6 +98,7 @@ function render() {
       <div class="chat-header" id="chat-header">
         <div class="profile-info" id="profile-info"></div>
         <div class="hdr-actions">
+          <button class="btn-icon hidden" id="tts-stop" title="Vorlesen stoppen" aria-label="Vorlesen stoppen">⏹</button>
           <button class="btn-icon" id="photo-btn" title="Foto-Einstellungen" aria-label="Foto-Einstellungen">📸</button>
           <button class="btn-icon" id="more-btn" title="Mehr" aria-label="Mehr" aria-expanded="false">⋯</button>
           <div class="hdr-menu hidden" id="hdr-menu">
@@ -151,18 +193,23 @@ function render() {
   });
   
   wireReadingArea();
+  root.querySelector('#tts-stop')?.addEventListener('click', () => stopTts());
   root.querySelector('#cast-btn').addEventListener('click', () => {
     openCastPicker();
   });
   
   const convs = listConversations();
-  if (convs.length === 0) {
+  let preferred = null;
+  try { preferred = localStorage.getItem('jeffa.currentConv'); } catch {}
+  const start = (preferred && convs.find((c) => c.id === preferred)) || convs[0];
+  if (!start) {
     createNewConv();
   } else {
-    loadConv(convs[0].id);
+    loadConv(start.id);
   }
   
   renderSidebar();
+  paintTts();
 }
 
 
@@ -170,27 +217,51 @@ function render() {
 const STORE_KEY = 'jeffa.conversations';
 let convCache = [];
 let persistTimer = null;
+const IDB_KEY = 'conversations';
 async function loadStore() {
+  let idbConvs = [];
+  try {
+    const idbRaw = await idbGet(IDB_KEY);
+    if (Array.isArray(idbRaw)) idbConvs = idbRaw;
+    else if (typeof idbRaw === 'string' && idbRaw) { const p = JSON.parse(idbRaw); idbConvs = Array.isArray(p) ? p : (p && p.ct ? await decryptJSON(p) : []); }
+    else if (idbRaw && typeof idbRaw === 'object' && idbRaw.ct) idbConvs = await decryptJSON(idbRaw);
+  } catch (e) { console.warn('Chats (IndexedDB) nicht lesbar', e); }
   const raw = localStorage.getItem(STORE_KEY);
-  if (!raw) { convCache = []; return; }
+  if (!raw) { convCache = Array.isArray(idbConvs) ? idbConvs : []; return; }
   try {
     const parsed = JSON.parse(raw);
-    convCache = Array.isArray(parsed) ? parsed : (parsed && parsed.ct ? await decryptJSON(parsed) : []);
+    const lsConvs = Array.isArray(parsed) ? parsed : (parsed && parsed.ct ? await decryptJSON(parsed) : []);
+    convCache = mergeStores(idbConvs, lsConvs); // v82: erst zusammenführen, dann (v68) neu speichern – nie einen leeren Stand schreiben
     if (parsed && parsed.ct && !isEncryptOn()) await persist(true); // v68: alte verschlüsselte Chats unverschlüsselt neu speichern
-  } catch (e) { console.warn('Chats nicht lesbar', e); if (raw && !localStorage.getItem(STORE_KEY + '.unreadable')) localStorage.setItem(STORE_KEY + '.unreadable', raw); convCache = []; }
+  } catch (e) { console.warn('Chats nicht lesbar', e); if (raw && !localStorage.getItem(STORE_KEY + '.unreadable')) localStorage.setItem(STORE_KEY + '.unreadable', raw); convCache = Array.isArray(idbConvs) ? idbConvs : []; }
+}
+let saveFailedOnce = false;
+async function writeLs(convs) {
+  const data = isEncryptOn() ? JSON.stringify(await encryptJSON(convs)) : JSON.stringify(convs);
+  localStorage.setItem(STORE_KEY, data);
 }
 function persist(now = false) {
   clearTimeout(persistTimer);
   const run = async () => {
+    let idbOk = false;
     try {
-      const data = isEncryptOn() ? JSON.stringify(await encryptJSON(convCache)) : JSON.stringify(convCache);
-      localStorage.setItem(STORE_KEY, data);
-    } catch (e) { console.warn('save failed', e); }
+      const full = isEncryptOn() ? await encryptJSON(convCache) : convCache;
+      idbOk = await idbSet(IDB_KEY, full);
+    } catch (e) { console.warn('save failed (idb)', e); }
+    let lsOk = false;
+    const lite = liteCopy(convCache);
+    try { await writeLs(lite); lsOk = true; }
+    catch (e) {
+      console.warn('save failed (ls)', e);
+      try { await writeLs(lite.map((c) => ({ ...c, messages: (c.messages || []).slice(-80) }))); lsOk = true; } catch (e2) { console.warn('save failed (ls, kurz)', e2); }
+    }
+    if (!idbOk && !lsOk && !saveFailedOnce) { saveFailedOnce = true; toast('⚠️ Chat konnte nicht gespeichert werden – Speicher voll? Alte Chats mit Bildern löschen.'); }
   };
   if (now) return run();
   persistTimer = setTimeout(run, 400);
 }
 window.addEventListener('pagehide', () => persist(true));
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') persist(true); });
 window.addEventListener('jeffa:encrypt-changed', () => persist(true)); // v68: Umschalten speichert sofort im neuen Format
 
 export function listConversations(profileId) {
@@ -210,6 +281,8 @@ function deleteConversation(id) { convCache = convCache.filter(c => c.id !== id)
 
 function createNewConv() {
   const profile = getActiveProfile();
+  const newest = listConversations(profile.id)[0];
+  if (newest && !(newest.messages || []).length) { loadConv(newest.id); renderSidebar(); return; }
   const conv = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     profileId: profile.id,
@@ -224,15 +297,23 @@ function createNewConv() {
 }
 
 function loadConv(id) {
+  stopTts();
   currentConvId = id;
   const conv = getConversation(id);
   if (!conv) return;
+  try {
+    localStorage.setItem('jeffa.currentConv', id);
+    const map = JSON.parse(localStorage.getItem('jeffa.lastConvByProfile') || '{}');
+    map[conv.profileId] = id;
+    localStorage.setItem('jeffa.lastConvByProfile', JSON.stringify(map));
+  } catch {}
   
   const profile = getProfile(conv.profileId);
   if (profile) setActiveProfile(profile.id);
   
   renderHeader();
   renderMessages();
+  paintTts();
 }
 
 function renderSidebar() {
@@ -377,7 +458,8 @@ function renderMessages() {
       content = msg.content || msg.status === 'streaming' ? `<div class="markdown">${(msg.generated && msg.status === 'streaming' ? `<span class="img-spin"></span> ${escapeHtml(msg.content || '🎨 Bild wird gemalt…')}` : msg.content ? renderMarkdown(msg.content) : '<span class="thinking">💭 denkt nach…</span>')}</div>` : '';
     }
     
-    const attachments = (msg.images || []).map(img => {
+    const strippedHint = msg.stripped && !msg.imageUrl && !(msg.images || []).length ? '<div class="hint">🖼 Bild nur auf dem Ursprungsgerät gespeichert</div>' : '';
+    const attachments = strippedHint + (msg.images || []).map(img => {
       if (img.mime?.startsWith('video/')) {
         return `<video src="data:${img.mime};base64,${img.data}" controls></video>`;
       }
@@ -389,7 +471,7 @@ function renderMessages() {
       <div class="action-chips">
         <button class="chip" data-action="image" data-id="${msg.id}">🖼 Foto</button>
         <button class="chip" data-action="video" data-id="${msg.id}">🎬 Video</button>
-        <button class="chip" data-action="speak" data-id="${msg.id}">🔊 Vorlesen</button>
+        <button class="chip${speakingNow && speakingNow === msg.id ? ' speaking' : ''}" aria-pressed="${speakingNow && speakingNow === msg.id ? 'true' : 'false'}" data-action="speak" data-id="${msg.id}">${speakingNow && speakingNow === msg.id ? '⏹ Stopp' : '🔊 Vorlesen'}</button>
         <button class="chip" data-action="copy" data-id="${msg.id}">📋 Kopieren</button>
         <button class="chip" data-action="up" data-id="${msg.id}">👍</button>
         <button class="chip" data-action="down" data-id="${msg.id}">👎</button>
@@ -416,6 +498,7 @@ function renderMessages() {
   container.scrollTop = container.scrollHeight;
   
   attachMessageActions();
+  paintTts();
 }
 
 function attachMessageActions() {
@@ -454,10 +537,20 @@ function toast(msg) {
 function currentConv() { return getConversation(currentConvId); }
 
 // ---- public helpers used by profiles/app
-export function startNewChat(profileId) { if (profileId) setActiveProfile(profileId); createNewConv(); }
+export function startNewChat(profileId) { if (profileId) setActiveProfile(profileId); stopTts(); createNewConv(); }
 export function openLastChat(profileId) {
-  const c = listConversations(profileId)[0];
+  let preferred = null;
+  try { preferred = (JSON.parse(localStorage.getItem('jeffa.lastConvByProfile') || '{}') || {})[profileId] || null; } catch {}
+  const c = pickConvForProfile(listConversations(), profileId, preferred);
   if (c) { loadConv(c.id); renderSidebar(); } else startNewChat(profileId);
+}
+export function lastConvIdFor(profileId) {
+  const all = listConversations(profileId);
+  if (all.length) {
+    try { const m = JSON.parse(localStorage.getItem('jeffa.lastConvByProfile') || '{}'); if (m && m[profileId] && all.some((c) => c.id === m[profileId])) return m[profileId]; } catch {}
+    return all[0].id;
+  }
+  return null;
 }
 export function getCast() { return cast.slice(); }
 export function setCast(ids) { cast = Array.isArray(ids) ? ids.slice(0, 3) : []; try { localStorage.setItem('jeffa.cast', JSON.stringify(cast)); } catch {} }
@@ -541,6 +634,7 @@ async function sendMessage() {
   const fileText = files.map(f => `\n\n[Datei: ${f.name}]\n${f.text}`).join('');
   const images = pending.filter(a => a.type === 'image').map(a => ({ mime: a.mime, data: a.data }));
   const videos = pending.filter(a => a.type === 'video');
+  stopTts();
   const userMsg = { id: uid(), role: 'user', content: text + fileText, images, ts: Date.now() };
   if (videos.length) userMsg.video = { mime: videos[0].mime, name: videos[0].name };
   const secret = secureText;
@@ -558,15 +652,14 @@ async function generateReply(conv, { secret = null, videos = [] } = {}) {
   const adultChat = effectiveAdult(conv, profile);
   let system = (adultChat && profile.systemPromptAdult) || profile.systemPrompt || '';
   if (profile.teacher === 'es') system += ' ' + ({ anfaenger: 'Niveau: Anfänger – sehr einfache, kurze spanische Sätze, immer übersetzen, langsam steigern.', mittel: 'Niveau: Mittel – etwa die Hälfte der Antwort auf Spanisch, Übersetzung nur für schwierigere Teile.', fortgeschritten: 'Niveau: Fortgeschritten – überwiegend Spanisch, Redewendungen und Umgangssprache aus Spanien, Deutsch nur für Erklärungen.' }[profile.spanishLevel] || ''); // v65
-  if (cast.length) {
-    const names = cast.map(id => getProfile(id)?.name).filter(Boolean);
-    if (names.length) system += `\n\nIn Geschichten vorkommende Figuren: ${names.join(', ')}.`;
-  }
+  system += castLine(profile, cast, getProfile); // v82 C3: nur für Figuren
+  const otherNames = otherProfileNames(profile, getAllProfiles());
   if (me?.name) system += `\nDer Nutzer heißt ${me.name}.`;
   const adult = adultChat;
   if (adult) system += `\n\n[FSK18-Modus aktiv: Der Nutzer ist volljährig und hat Erwachseneninhalte freigeschaltet. Bleib in deiner Rolle und folge deiner Persona-Beschreibung.]`;
   { const pt = personaChatText(profile.persona, adult); if (pt) system += `\n\n[${pt}]`; } // v78 D3
   if (profile.beispielPersona) system += `\n\n[Stilvorlage des Nutzers – nur als Muster:]\n${String(profile.beispielPersona).slice(0, 1500)}\n[Ende Stilvorlage] Übernimm Aufbau, Ton und Detailgrad dieses Beispiels, aber schreib immer neuen Text passend zur aktuellen Szene, deinen Persona-Reglern und deinem Look.${adult ? '' : ' Nutze das Beispiel ausschließlich für Struktur und Ton; keine expliziten Inhalte.'}`;
+  system += identityAnchor(profile, otherNames); // v82 C3: Identitätsanker direkt vor der Foto-Regel
   system += `\n\nDu KANNST Fotos/Bilder von dir oder der Szene schicken – die App erzeugt sie für dich. Lehne das nie ab und behaupte nie, du könntest keine Fotos senden. Wenn der Nutzer ein Foto/Bild möchte (oder es gut passt), antworte kurz in deiner Rolle und hänge GANZ AM ENDE genau eine Zeile an: [FOTO: kurze englische Beschreibung von Pose, Ort, Kleidung, Licht].`;
   const fullMsgs = msgs.slice();
   const summary = await compactHistory(conv, msgs);
@@ -588,15 +681,16 @@ async function generateReply(conv, { secret = null, videos = [] } = {}) {
     finally {
       abortController = null; if (send) send.textContent = '📤';
       if (a.status === 'streaming') a.status = 'done'; if (document.body.dataset.section && document.body.dataset.section !== 'chat') window.dispatchEvent(new CustomEvent('jeffa:news', { detail: { tab: 'chat' } }));
-      saveConversation(conv); renderMessages();
+      saveConversation(conv); renderMessages(); persist(true);
     }
     if (a.status === 'done' && conv.title === 'Neue Konversation') autoTitle(conv);
     return;
   }
   try {
     await streamChat({
-      modelChain: resolveChain({ chatModel: conv.model, profileModel: profile.model, adult }), paidAllowed: getPaidAllowed(), adult, mode: chatMode(conv, profile), system: system.slice(-4000), messages: msgs, stream: true,
+      modelChain: resolveChain({ chatModel: conv.model, profileModel: profile.model, adult }), paidAllowed: getPaidAllowed(), adult, mode: chatMode(conv, profile), system: capSystem(system), messages: msgs, stream: true,
       notes: (profile.notes || []).slice(0, 5), profileId: profile.id, summary: summary || undefined,
+      profileName: profile.name, otherNames,
       memory: settingsGet().memory !== false && !isEncryptOn(),
       attachments: videos.map(v => ({ type: 'video', mime: v.mime, data: v.data })),
     }, {
@@ -614,6 +708,7 @@ async function generateReply(conv, { secret = null, videos = [] } = {}) {
     if (a.status === 'streaming') a.status = 'done'; if (document.body.dataset.section && document.body.dataset.section !== 'chat') window.dispatchEvent(new CustomEvent('jeffa:news', { detail: { tab: 'chat' } }));
     saveConversation(conv);
     renderMessages();
+    persist(true);
   }
   const fotoM = a.content.match(/\[(?:FOTO|BILD|PHOTO)\s*:?\s*([^\]]*)\]?\s*$/i);
   const userAsked = PHOTO_ASK.test(fullMsgs.at(-1)?.content || '');
@@ -627,7 +722,9 @@ async function generateReply(conv, { secret = null, videos = [] } = {}) {
     loadImageClient().then((fn) => fn({ scene }));
   }
   if (a.status === 'done' && !secret) learnMemory(conv, profile, fullMsgs.concat({ role: 'assistant', content: a.content }));
-  if (a.status === 'done' && profile.voice?.autoRead && profile.voice.autoReadSet && a.content) speak(a.content, profile.voice, profile.language);
+  if (a.status === 'done' && profile.voice?.autoRead && profile.voice.autoReadSet && a.content) {
+    import('./shared/tts.js').then((m) => { speakingNow = a.id; paintTts(); return m.speak(a.content, profile.voice, profile.language, { id: a.id }); }).catch(() => toast('Vorlesen nicht möglich'));
+  }
   if (a.status === 'done' && conv.title === 'Neue Konversation') autoTitle(conv);
 }
 // Token saving: summarize older turns once (Flash-Lite) and send summary + last 8 messages instead of full history.
@@ -647,7 +744,7 @@ function learnMemory(conv, profile, msgs) {
   if (settingsGet().memory === false || isEncryptOn() || conv.messages.some(m => m.secure)) return;
   const users = conv.messages.filter(m => m.role === 'user').length;
   if (users < 2 || users % 3 !== 0 && users !== 2) return;
-  api('/api/memory/extract', { method: 'POST', body: { profileId: profile.id, messages: msgs.slice(-6).map(m => ({ role: m.role, content: String(m.content).slice(0, 1200) })) } })
+  api('/api/memory/extract', { method: 'POST', body: { profileId: profile.id, profileName: profile.name, otherNames: otherProfileNames(profile, getAllProfiles()), messages: msgs.slice(-6).map(m => ({ role: m.role, content: String(m.content).slice(0, 1200) })) } })
     .then(r => { if (r.saved?.length) toast(`🧠 Gemerkt: ${r.saved[0]}${r.saved.length > 1 ? ` (+${r.saved.length - 1})` : ''}`); }).catch(() => {});
 }
 async function autoTitle(conv) {
@@ -683,7 +780,7 @@ async function onChip(action, id, chip) {
     const sel = action === 'copy' ? String(window.getSelection?.() || '').trim() : '';
     try { await navigator.clipboard.writeText(sel || msg.content); toast(sel ? 'Auswahl kopiert' : 'Ganzer Text kopiert'); } catch { toast('Kopieren nicht möglich'); }
   }
-  else if (action === 'speak') speak(msg.content, profile.voice, profile.language);
+  else if (action === 'speak') toggleSpeak(msg, profile);
   else if (action === 'up') { msg.feedback = 'up'; saveConversation(conv); chip.classList.add('active'); }
   else if (action === 'down') askFeedback(conv, msg, profile, chip);
   else if (action === 'imgup' || action === 'imgdown') rateImage(conv, msg, profile, action === 'imgup' ? 1 : -1);
@@ -868,7 +965,7 @@ async function runAgent(conv, a, profile, system, msgs) {
   let toolResults = [];
   for (let step = 0; step < 3; step++) {
     let r;
-    try { r = await api('/api/agent', { method: 'POST', body: { model, paidAllowed: getPaidAllowed(), system: system.slice(0, 3000), messages: msgs, ctx: agentCtx(), toolResults } }); }
+    try { r = await api('/api/agent', { method: 'POST', body: { model, paidAllowed: getPaidAllowed(), system: capSystem(system, 3000), messages: msgs, ctx: agentCtx(), toolResults } }); }
     catch (e) { a.status = 'error'; a.content = `⚠️ ${e.message}`; return; }
     a.model = (r.model || '') + (r.tools?.length ? ` · 🛠 ${r.tools.join(', ')}` : '');
     if (!r.confirm) { a.content = r.reply || '…'; return; }

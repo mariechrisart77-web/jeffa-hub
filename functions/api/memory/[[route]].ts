@@ -24,7 +24,9 @@ const handle = async (ctx: EventContext<Env, any, any>): Promise<Response> => {
     await checkRateLimit(ctx.env, ip);
     const b: any = await ctx.request.json();
     if (!Array.isArray(b.messages)) return json({ error: { code: "invalid_input", message: "messages fehlt" } }, 400);
-    const saved = await extractMemories(ctx.env, b.profileId ? String(b.profileId).slice(0, 80) : undefined, b.messages.slice(-6));
+    const profileName = typeof b.profileName === "string" ? b.profileName.slice(0, 40) : undefined;
+    const otherNames = Array.isArray(b.otherNames) ? b.otherNames.filter((n: unknown) => typeof n === "string").slice(0, 20).map((n: string) => n.slice(0, 40)) : undefined;
+    const saved = await extractMemories(ctx.env, b.profileId ? String(b.profileId).slice(0, 80) : undefined, b.messages.slice(-6), { profileName, otherNames });
     return json({ saved });
   }
   await requireRole(ctx, "read");

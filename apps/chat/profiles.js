@@ -253,6 +253,8 @@ export function getProfiles() {
   return profiles.filter(p => p.enabled && (adult || !p.adult));
 }
 
+export function getAllProfiles() { ensureLoaded(); return profiles.slice(); } // v82 C3: alle Namen (auch ausgeblendete) für den Identitätsanker
+
 export function getProfile(id) {
   ensureLoaded();
   return profiles.find(p => p.id === id);
@@ -587,7 +589,7 @@ function renderProfileList(root) {
       <div class="profile-desc">${esc(profile.description)}</div>
       <div class="profile-count">${convCount} Gespräch${convCount !== 1 ? 'e' : ''}</div>
       <div class="profile-actions">
-        ${profile.lastConversationId ? `<button class="btn-icon last-chat-btn" data-id="${profile.id}" title="Letzter Chat">↩</button>` : ''}
+        <button class="btn-icon new-chat-btn" data-id="${profile.id}" title="Neuer Chat" aria-label="Neuer Chat">＋</button>
         <button class="btn-icon edit-btn" data-id="${profile.id}" title="Bearbeiten">✏️</button>
       </div>
     `;
@@ -595,15 +597,15 @@ function renderProfileList(root) {
     
     card.addEventListener('click', e => {
       if (!e.target.closest('.btn-icon')) {
-        handlers.onStartChat?.(profile.id);
+        handlers.onOpenLastChat?.(profile.id);
       }
     });
   });
   
-  root.querySelectorAll('.last-chat-btn').forEach(btn => {
+  root.querySelectorAll('.new-chat-btn').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
-      handlers.onOpenLastChat?.(btn.dataset.id);
+      handlers.onStartChat?.(btn.dataset.id);
     });
   });
   
