@@ -1,0 +1,19 @@
+{
+  "name": "Jeffa Bild",
+  "short_name": "Bild",
+  "description": "KI-Bildgenerierung mit Profilen",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f172a",
+  "theme_color": "#8b5cf6",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

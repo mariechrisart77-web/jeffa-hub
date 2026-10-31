@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Jeffa Bild – KI-Bildgenerierung">
+  <meta name="theme-color" content="#8b5cf6">
+  <title>Jeffa Bild</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icon.svg">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="./bild.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1 class="header-title">Jeffa Bild</h1>
+  </header>
+
+  <main>
+    <div class="form-group">
+      <label for="mode-select">Modus</label>
+      <select id="mode-select">
+        <option value="single">Einzelbild</option>
+        <option value="comic">Comic</option>
+        <option value="stil-test">Stil-Test</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="profile-select">Profil</label>
+      <select id="profile-select">
+        <option value="none">Ohne Profil (freie Szene)</option>
+      </select>
+    </div>
+
+    <div class="form-group" id="panels-div">
+      <label for="panels-select">Panels</label>
+      <select id="panels-select">
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="style-select">Stil</label>
+      <select id="style-select">
+        <option value="real">Real</option>
+        <option value="anime">Anime</option>
+        <option value="comic">Comic</option>
+        <option value="manhwa">Manhwa</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="format-select">Format</label>
+      <select id="format-select">
+        <option value="hoch">Hochformat 768×1024</option>
+        <option value="quadrat">Quadrat 1024×1024</option>
+        <option value="quer">Querformat 1024×768</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="quality-select">Qualität/Modell</label>
+      <select id="quality-select">
+        <option value="auto">Auto</option>
+        <option value="spar">Spar (0,01 $)</option>
+        <option value="mittel">Mittel (0,02 $)</option>
+        <option value="qualitaet">Qualität (0,04 $)</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="scene-select">Szene</label>
+      <select id="scene-select"></select>
+    </div>
+
+    <div class="form-group">
+      <label for="own-scene-input">Eigene Szene (optional)</label>
+      <input type="text" id="own-scene-input" placeholder="z.B. Astronaut im Weltall">
+    </div>
+
+    <div class="form-group">
+      <label class="checkbox-label">
+        <input type="checkbox" id="fsk18-checkbox">
+        FSK 18 aktiviert
+      </label>
+    </div>
+
+    <div class="form-group">
+      <label for="seed-select">Seed</label>
+      <select id="seed-select">
+        <option value="zufall">Zufall</option>
+        <option value="last">Letzten wiederverwenden</option>
+      </select>
+    </div>
+
+    <div id="cost-preview" class="cost-preview"></div>
+    <div id="total-cost" class="total-cost"></div>
+
+    <button id="generate-btn" class="btn-primary">Generieren</button>
+    <div id="spinner" class="spinner"></div>
+
+    <div id="results"></div>
+  </main>
+
+  <script type="module" src="./bild.js"></script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mockup – Vereinfachter Profil-Editor</title>
+<style>
+:root{--bg:#0A0612;--card:#150A1F;--in:#1E1428;--ac:#8B5CF6;--t1:#F8F8FF;--t2:#B8A6D3;--t3:#7D6B9B;--div:#2D1F3D}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t1);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:16px}
+header{position:sticky;top:0;background:var(--bg);padding:14px 16px 8px;border-bottom:1px solid var(--div);z-index:2}
+h1{font-size:19px;margin:0 0 10px;display:flex;align-items:center;gap:8px}
+.steps{display:flex;gap:6px;overflow-x:auto}.steps span{flex:0 0 auto;padding:7px 11px;border-radius:999px;background:var(--in);color:var(--t2);font-size:13px}
+.steps span.on{background:var(--ac);color:#fff}
+main{padding:12px 14px 90px}section{background:var(--card);border-radius:16px;padding:14px;margin-bottom:14px}
+h2{font-size:16px;margin:0 0 4px;display:flex;gap:8px;align-items:center}h2 b{background:var(--ac);border-radius:50%;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-size:13px}
+.sub{color:var(--t3);font-size:13px;margin:0 0 12px}
+label{display:block;color:var(--t2);font-size:13px;margin:12px 0 6px}
+.sel{width:100%;background:var(--in);color:var(--t1);border:1px solid var(--div);border-radius:12px;padding:13px 14px;font-size:16px;display:flex;justify-content:space-between}
+.sel:after{content:"▾";color:var(--t3)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}.chips span{padding:9px 13px;border-radius:999px;border:1px solid var(--div);background:var(--in);font-size:14px}
+.chips span.on{background:rgba(139,92,246,.25);border-color:var(--ac);color:#fff}
+.seg{display:flex;background:var(--in);border-radius:12px;padding:3px}.seg span{flex:1;text-align:center;padding:10px 4px;border-radius:9px;font-size:14px;color:var(--t2)}.seg span.on{background:var(--ac);color:#fff}
+.scale{display:flex;gap:4px}.scale span{flex:1;height:34px;border-radius:8px;background:var(--in);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--t3)}.scale span.on{background:var(--ac);color:#fff}
+.row{display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:15px}
+.tg{width:46px;height:26px;border-radius:13px;background:var(--ac);position:relative}.tg:after{content:"";position:absolute;right:3px;top:3px;width:20px;height:20px;border-radius:50%;background:#fff}.tg.off{background:var(--div)}.tg.off:after{left:3px;right:auto}
+.prev{background:var(--in);border-radius:12px;padding:10px;font-size:13px;color:var(--t2);margin-top:10px}
+details{background:var(--in);border-radius:12px;padding:12px;margin-top:12px}summary{color:var(--t2);font-size:14px}
+.tag18{font-size:11px;background:#4c1d95;color:#ddd6fe;border-radius:6px;padding:2px 6px;margin-left:6px}
+.bar{position:fixed;bottom:0;left:0;right:0;background:var(--bg);border-top:1px solid var(--div);padding:12px 14px;display:flex;gap:10px}
+.bar div{flex:1;text-align:center;padding:14px;border-radius:12px;background:var(--in)}.bar div.p{background:var(--ac)}
+.note{font-size:12px;color:var(--t3);margin-top:6px}
+</style></head><body>
+<header><h1>👩 Lena bearbeiten</h1>
+<div class="steps"><span class="on">1 Basis</span><span>2 Aussehen</span><span>3 Outfit &amp; Stil</span><span>4 Pose &amp; Ort</span><span>5 Persönlichkeit</span></div></header>
+<main>
+<section><h2><b>1</b>Basis</h2><p class="sub">Nur das Nötigste – alles per Tippen.</p>
+<label>Name</label><div class="sel" style="justify-content:flex-start">Lena</div>
+<label>Avatar</label><div class="chips"><span class="on">👩</span><span>👱‍♀️</span><span>👩‍🦰</span><span>👩‍🦱</span><span>🧑</span><span>👨</span><span>＋</span></div>
+<label>Sprache</label><div class="seg"><span class="on">Deutsch</span><span>Español</span><span>English</span></div>
+<label>Stimme</label><div class="sel">Weiblich, warm</div>
+<div class="row">Antworten automatisch vorlesen <div class="tg off"></div></div>
+</section>
+
+<section><h2><b>2</b>Aussehen</h2><p class="sub">Wie die Figur auf Bildern aussieht.</p>
+<label>Typ</label><div class="seg"><span class="on">Frau</span><span>Mann</span><span>Divers</span></div>
+<label>Wirkt wie (ab 18)</label><div class="sel">25 Jahre</div>
+<label>Haarfarbe</label><div class="chips"><span>Blond</span><span class="on">Brünett</span><span>Schwarz</span><span>Rot</span><span>Grau</span></div>
+<label>Haarlänge &amp; Frisur</label><div class="sel">Lang, glatt</div>
+<label>Augenfarbe</label><div class="chips"><span>Blau</span><span class="on">Braun</span><span>Grün</span><span>Grau</span></div>
+<label>Hautton</label><div class="chips"><span>Hell</span><span class="on">Gebräunt</span><span>Oliv</span><span>Dunkel</span></div>
+<label>Größe</label><div class="seg"><span>Klein</span><span class="on">Mittel</span><span>Groß</span></div>
+<label>Statur</label><div class="sel">Schlank</div>
+<label>Kurven</label><div class="scale"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span class="on">6</span><span>7</span><span>8</span><span>9</span><span>10</span></div>
+<label>Oberweite</label><div class="scale"><span>XS</span><span>S</span><span>S+</span><span>M</span><span class="on">M+</span><span>L</span><span>XL</span></div>
+<label>Besonderes</label><div class="chips"><span>Tätowierung</span><span>Piercing</span><span>Brille</span><span class="on">Sommersprossen</span><span>Narbe</span></div>
+<label>Gesicht &amp; Lächeln</label><div class="chips"><span class="on">Weiße gerade Zähne</span><span>Grübchen</span><span>Volle Lippen</span><span>Markante Wangen</span></div>
+</section>
+
+<section><h2><b>3</b>Outfit &amp; Stil</h2><p class="sub">Standard-Kleidung und Bildstil.</p>
+<label>Standard-Outfit</label><div class="sel">Sommerkleid</div>
+<div class="note">Auswahl aus: Frei · Abendkleid · Jeans &amp; Pulli · Sommerkleid · Latex-Bikini grau<span class="tag18">18+</span> · eigene</div>
+<label>Stil-Preset</label><div class="sel">Glossy Latex / Wicked-Weasel-Bikini <span class="tag18">18+</span></div>
+<label>Bildstil</label><div class="seg"><span class="on">Foto</span><span>Comic</span><span>Anime</span></div>
+<label>Ausdruck</label><div class="chips"><span class="on">Warmes Lächeln</span><span>Verschmitzt</span><span>Selbstbewusst</span></div>
+<div class="row">Prompt automatisch erstellen <div class="tg"></div></div>
+<div class="row">Gleiche Figur auf jedem Bild (Seed fix) <div class="tg"></div></div>
+<div class="row">Gesichts-Referenzbild nutzen <div class="tg off"></div></div>
+</section>
+
+<section><h2><b>4</b>Pose &amp; Ort</h2><p class="sub">„Frei" = ergibt sich aus dem Chat.</p>
+<label>Pose</label><div class="sel">Frei (aus der Geschichte)</div>
+<div class="chips" style="margin-top:8px"><span>Stehend</span><span>Sitzend</span><span>Über die Schulter</span><span>Selfie</span><span>Spiegel-Selfie</span><span>An Wand gelehnt</span><span>Ganzkörper</span><span>Porträt</span><span>Mehr …</span></div>
+<label>Umgebung</label><div class="sel">Frei (aus der Geschichte)</div>
+<div class="chips" style="margin-top:8px"><span>Strand</span><span>Wohnzimmer</span><span>Stadt bei Nacht</span><span>Hotelzimmer</span><span>Café</span><span>Pool</span><span>Schlafzimmer</span><span>Mehr …</span></div>
+<div class="prev">🖼 Vorschau: <i>adult woman, about 25, long straight brunette hair, brown eyes, slim, summer dress, warm smile, photorealistic …</i></div>
+</section>
+
+<section><h2><b>5</b>Persönlichkeit</h2><p class="sub">Wie die Figur schreibt und reagiert.</p>
+<label>Grundcharakter</label><div class="sel">Verspielt &amp; frech</div>
+<label>Zusätzliche Züge</label><div class="chips"><span class="on">Neckisch</span><span class="on">Spontan</span><span>Witzig</span></div>
+<label>Wärme</label><div class="seg"><span>Kühl</span><span>Mittel</span><span class="on">Warm</span></div>
+<label>Humor</label><div class="seg"><span>Ernst</span><span class="on">Mittel</span><span>Humorvoll</span></div>
+<label>Vorlieben</label><div class="chips"><span class="on">Lange Gespräche</span><span>Komplimente</span><span class="on">Necken</span><span>Reisen</span><span>Musik</span><span>Kino</span><span>Kochen</span><span>Mehr …</span></div>
+<details><summary>18+ Temperament (Regler) <span class="tag18">18+</span></summary><div class="note">Bestehende Regler (Zärtlich↔Wild, Romantisch↔Verführerisch …) als 3-Stufen-Auswahl.</div></details>
+<details><summary>⚙️ Erweitert (selten gebraucht)</summary><div class="note">Beschreibung · Chat-Modell · Tempo/Tonhöhe der Stimme · Trigger-Wort · Qualität · Outfit-Stichwort/-Negativ · Seed-Nummer · Eigener Stil (Freitext) · Stilvorlagen · Galerie · System-Prompt · Lernnotizen · Intensität/Initiative/Fantasie</div></details>
+</section>
+</main>
+<div class="bar"><div>Abbrechen</div><div class="p">Speichern</div></div>
+</body></html>

@@ -1,0 +1,36 @@
+name = "jeffa-hub"
+compatibility_date = "2026-01-01"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "dist/hub"
+
+[vars]
+CF_ACCOUNT_ID = "debefed4a9b9645537c7bf00563358a0"
+AI_GATEWAY_ID = "jeffa-gateway"
+DEFAULT_MODEL = "gemini-3.5-flash-lite"
+HISTORY_LIMIT = "6"
+CACHE_TTL = "3600"
+MAX_OUTPUT_TOKENS = "1024"
+SUMMARY_EVERY = "8"
+BUDGET_DAILY_USD = "1"
+BUDGET_GLOBAL_DAILY_USD = "3"
+RATE_LIMIT_PER_MIN = "30"
+BILD_URL = "https://jeffa-bild.pages.dev"
+BILD_TIMEOUT_MS = "75000"
+FALLBACK_MODEL = "google/gemini-2.5-flash-lite"
+# HF_VIDEO_MODEL = "stabilityai/stable-video-diffusion-img2vid-xt"
+# HF_TTS_MODEL = "facebook/mms-tts-deu"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "jeffa-kollab"
+database_id = "e95913ea-7749-4a56-9580-5610f3cd9acd"
+migrations_dir = "migrations"
+
+[[kv_namespaces]]
+binding = "KV"  # persistentes Rate-Limit + Tagesbudget
+id = "0ec191e5f5b148d391d46d63d51f42a2"
+
+# R2 for generated images – enable once R2 is activated in the Cloudflare dashboard, then: npx wrangler r2 bucket create jeffa-images
+# [[r2_buckets]]
+# binding = "IMAGES"
+# bucket_name = "jeffa-images"

@@ -1,0 +1,19 @@
+{
+  "name": "Jeffa Chat",
+  "short_name": "Jeffa",
+  "description": "KI-Chat mit Profilen",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0A0612",
+  "theme_color": "#8b5cf6",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

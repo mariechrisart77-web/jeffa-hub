@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Jeffa – KI-Chat, Profile, Wächter und Kollaboration">
+  <meta name="theme-color" content="#0f172a">
+  <title>Jeffa</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon.svg">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="./shared/ui.css">
+  <link rel="stylesheet" href="./chat.css">
+  <link rel="stylesheet" href="./profiles.css">
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-left">
+      <button id="menu-btn" class="btn-icon" aria-label="Menü">☰</button>
+      <h1 class="app-title">Jeffa</h1>
+    </div>
+  <nav class="tabs-nav">
+      <button class="tab-btn active" data-tab="chat" title="💬 Chat"><span class="ti">💬</span><span class="tl">Chat</span></button>
+      <button class="tab-btn" data-tab="bot" title="🤖 Grok Bot"><span class="ti">🤖</span><span class="tl">Bot</span></button>
+      <button class="tab-btn" data-tab="comic" title="📖 Comic"><span class="ti">📖</span><span class="tl">Comic</span></button>
+      <button class="tab-btn" data-tab="profile" title="👤 Profile"><span class="ti">👤</span><span class="tl">Profile</span></button>
+      <button class="tab-btn" data-tab="me" title="🧑 Ich"><span class="ti">🧑</span><span class="tl">Ich</span></button>
+      <button class="tab-btn" data-tab="waechter" title="👁 Wächter"><span class="ti">👁</span><span class="tl">Wächter</span></button>
+      <button class="tab-btn" data-tab="kollab" title="📋 Kollab"><span class="ti">📋</span><span class="tl">Kollab</span></button>
+      <button class="tab-btn" data-tab="tresor" title="🔐 Tresor"><span class="ti">🔐</span><span class="tl">Tresor</span></button>
+      <button class="tab-btn" data-tab="settings" title="Einstellungen"><span class="ti">⚙️</span><span class="tl">Einst.</span></button>
+    </nav>
+    <div class="header-right">
+      <button id="theme-btn" class="btn-icon" aria-label="Design">🌙</button>
+    </div>
+  </header>
+
+
+
+  <div id="install-banner" class="install-banner hidden">
+    <div class="install-banner-text">
+      <strong>Auf Homescreen installieren</strong>
+      <span class="install-banner-hint"></span>
+    </div>
+    <div class="install-banner-actions">
+      <button class="btn-sm" id="install-btn">Installieren</button>
+      <button class="btn-sm secondary" id="install-close">Schließen</button>
+    </div>
+  </div>
+
+  <main class="tabs-content">
+    <section id="tab-chat" class="tab-panel active"></section>
+    <section id="tab-profile" class="tab-panel"></section>
+    <section id="tab-me" class="tab-panel"></section>
+    <section id="tab-waechter" class="tab-panel"></section>
+    <section id="tab-kollab" class="tab-panel"></section>
+    <section id="tab-tresor" class="tab-panel"></section>
+    <section id="tab-bot" class="tab-panel"></section>
+    <section id="tab-comic" class="tab-panel"></section>
+    <section id="tab-settings" class="tab-panel"></section>
+  </main>
+
+  <div id="toast-container"></div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

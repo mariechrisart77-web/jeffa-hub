@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Jeffa Chat – KI-Chat mit Profilen und Persönlichkeiten">
+  <meta name="theme-color" content="#0f172a">
+  <title>Jeffa Chat</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon.svg">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="./shared/ui.css">
+  <link rel="stylesheet" href="./chat.css">
+</head>
+<body>
+  <header class="app-header" id="app-header">
+    <button class="btn-icon" id="menu-btn" aria-label="Menü">☰</button>
+    <h1 class="app-title">Jeffa Chat</h1>
+    <a href="https://jeffa-hub.pages.dev" class="btn-icon" aria-label="Hub">🏠</a>
+  </header>
+
+  <nav class="tabs-nav">
+    <button class="tab-btn active" data-tab="chat">💬 Chat</button>
+    <button class="tab-btn" data-tab="profile">👤 Profile</button>
+    <button class="tab-btn" data-tab="me">🧑 Ich</button>
+    <button class="tab-btn" data-tab="settings">⚙️ Einstellungen</button>
+  </nav>
+
+  <div id="install-banner" class="install-banner hidden">
+    <div class="install-banner-text">
+      <strong>Auf Homescreen installieren</strong>
+      <span class="install-banner-hint"></span>
+    </div>
+    <div class="install-banner-actions">
+      <button class="btn-sm" id="install-btn">Installieren</button>
+      <button class="btn-sm secondary" id="install-close">Schließen</button>
+    </div>
+  </div>
+  <main class="tabs-content">
+    <section id="tab-chat" class="tab-panel active"></section>
+    <section id="tab-profile" class="tab-panel"></section>
+    <section id="tab-me" class="tab-panel"></section>
+    <section id="tab-settings" class="tab-panel"></section>
+  </main>
+
+
+  <div id="toast-container"></div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
+

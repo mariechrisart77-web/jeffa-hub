@@ -1,0 +1,22 @@
+name = "jeffa-backup"
+main = "src/index.ts"
+workers_dev = false  # nur Cron, keine öffentliche URL
+compatibility_date = "2026-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = ["17 3 * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "jeffa-kollab"
+database_id = "e95913ea-7749-4a56-9580-5610f3cd9acd"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "0ec191e5f5b148d391d46d63d51f42a2"
+
+# Nach R2-Aktivierung einkommentieren:
+# [[r2_buckets]]
+# binding = "BACKUP"
+# bucket_name = "jeffa-backup"

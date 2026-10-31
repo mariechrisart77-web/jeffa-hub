@@ -1,0 +1,10 @@
+# Cloudflare AI Gateway (optional, falls abweichend von Account/Gateway in wrangler.toml)
+# AI_GATEWAY_BASE_URL=https://gateway.ai.cloudflare.com/v1/DEIN_CF_ACCOUNT_ID/jeffa-gateway
+# CF_AIG_TOKEN=dein_optionaler_gateway_token
+
+# Provider API Keys (als Secrets setzen mit: wrangler pages secret put <NAME>)
+GEMINI_API_KEY=dein_gemini_key
+# OPENROUTER_API_KEY=dein_openrouter_key
+# XAI_API_KEY=dein_xai_key
+# VENICE_API_KEY=dein_venice_key
+# HF_TOKEN=dein_huggingface_token

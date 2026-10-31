@@ -1,0 +1,6 @@
+import { test } from 'node:test'; import assert from 'node:assert'; import { readFileSync } from 'node:fs';
+const H = readFileSync('src/bild/image-handler.ts', 'utf8'), C = readFileSync('apps/chat/chat.js', 'utf8') + readFileSync('apps/chat/image-client.js', 'utf8'), S = readFileSync('apps/hub/settings.js', 'utf8'), CSS = readFileSync('apps/hub/app.css', 'utf8'), N = readFileSync('src/imgsvc-image.ts', 'utf8');
+test('v54: Mix never runs in FSK18 (chroma)', () => { assert.match(H, /quality === "mix" && safeMode/); assert.match(H, /!safeMode \? "chroma"/); });
+test('v54: quality variants with verified models', () => { for (const v of ['lustify', 'hq', 'refine', 'refine-firered', 'krea']) assert.ok(S.includes(`value="${v}"`), v); for (const m of ['lustify-v8', 'qwen-image-3', 'qwen-edit-uncensored', 'firered-image-edit', 'krea-v2-large']) assert.ok(H.includes(m), m); });
+test('v54: iOS keyboard follows visualViewport', () => { assert.match(C, /--app-h/); assert.match(CSS, /var\(--app-h, 100dvh\)/); assert.match(C, /visualViewport\?\.addEventListener\('scroll'/); });
+test('v54: empty Venice balance surfaced + dryRun', () => { assert.match(N, /venice_no_credit/); assert.match(C, /venice_no_credit/); assert.match(N, /dryRun === true/); });

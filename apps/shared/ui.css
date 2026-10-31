@@ -1,0 +1,433 @@
+:root {
+  --bg: #0A0612;
+  --bg-card: #150A1F;
+  --bg-input: #1E1428;
+  --accent: #8B5CF6;
+  --accent-hover: #7C3AED;
+  --text-primary: #F8F8FF;
+  --text-secondary: #B8A6D3;
+  --text-tertiary: #7D6B9B;
+  --divider: #2D1F3D;
+  --success: #10B981;
+  --warning: #F59E0B;
+  --error: #EF4444;
+  --transition: 0.2s ease;
+  --shadow: 0 4px 16px rgba(139, 92, 246, 0.12);
+  --safe-area-inset-top: env(safe-area-inset-top);
+  --safe-area-inset-right: env(safe-area-inset-right);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom);
+  --safe-area-inset-left: env(safe-area-inset-left);
+}
+
+body.light-theme {
+  --bg: #FAF8FF;
+  --bg-card: #FFFFFF;
+  --bg-input: #F3EFFF;
+  --accent: #8B5CF6;
+  --accent-hover: #7C3AED;
+  --text-primary: #1A0B2E;
+  --text-secondary: #4A3B5C;
+  --text-tertiary: #7D6B9B;
+  --divider: #E5DEFF;
+  --success: #10B981;
+  --warning: #F59E0B;
+  --error: #EF4444;
+  --shadow: 0 4px 16px rgba(139, 92, 246, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  padding-bottom: var(--safe-area-inset-bottom);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+p {
+  margin: 0;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--divider);
+  padding: calc(0.75rem + var(--safe-area-inset-top)) max(1rem, calc(1rem + var(--safe-area-inset-right))) 0.75rem max(1rem, calc(1rem + var(--safe-area-inset-left)));
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3.5rem;
+}
+
+body.embedded .app-header {
+  display: none;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  padding: 0.5rem 1rem;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-radius: 0.5rem;
+  white-space: nowrap;
+  transition: background var(--transition), color var(--transition);
+}
+
+.tab:active {
+  transform: scale(0.97);
+}
+
+.tab.active {
+  background: var(--accent);
+  color: white;
+}
+
+.btn, .btn-primary, .btn-secondary, .btn-danger {
+  padding: 0.65rem 1.25rem;
+  border-radius: 999px;
+  font-weight: 500;
+  font-size: 0.95rem;
+  transition: background var(--transition), transform 0.1s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.btn:active, .btn-primary:active, .btn-secondary:active, .btn-danger:active {
+  transform: scale(0.97);
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.btn-secondary {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--divider);
+}
+
+.btn-secondary:hover {
+  background: var(--bg-card);
+}
+
+.btn-danger {
+  background: var(--error);
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #DC2626;
+}
+
+.btn-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition), transform 0.1s;
+  flex-shrink: 0;
+}
+
+.btn-icon:hover {
+  background: var(--divider);
+}
+
+.btn-icon:active {
+  transform: scale(0.95);
+}
+
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="number"],
+input[type="url"],
+textarea,
+select {
+  width: 100%;
+  padding: 0.75rem;
+  background: var(--bg-input);
+  border: 1px solid var(--divider);
+  border-radius: 0.5rem;
+  color: var(--text-primary);
+  transition: border-color var(--transition), background var(--transition);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-tertiary);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg);
+}
+
+textarea {
+  resize: vertical;
+  min-height: 4rem;
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--divider);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  transition: box-shadow var(--transition);
+}
+
+.card:hover {
+  box-shadow: var(--shadow);
+}
+
+.toast {
+  position: fixed;
+  bottom: max(1rem, calc(1rem + var(--safe-area-inset-bottom)));
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  padding: 0.75rem 1.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--divider);
+  box-shadow: var(--shadow);
+  font-size: 0.9rem;
+  font-weight: 500;
+  z-index: 10000;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  max-width: calc(100vw - 2rem);
+}
+
+.toast.show {
+  opacity: 1;
+}
+
+.toast.success {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.toast.error {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.toast.warning {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.install-banner {
+  position: fixed;
+  bottom: max(1rem, calc(1rem + var(--safe-area-inset-bottom)));
+  left: max(1rem, calc(1rem + var(--safe-area-inset-left)));
+  right: max(1rem, calc(1rem + var(--safe-area-inset-right)));
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  box-shadow: var(--shadow);
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.install-banner-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.install-banner-content {
+  flex: 1;
+}
+
+.install-banner-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 0.25rem;
+}
+
+.install-banner-text {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.install-banner-close {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.modal {
+  background: var(--bg-card);
+  border: 1px solid var(--divider);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  max-width: 400px;
+  width: 100%;
+  box-shadow: var(--shadow);
+  animation: modalIn 0.3s ease;
+}
+
+@keyframes modalIn {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.modal-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.modal-body {
+  margin-bottom: 1.5rem;
+  color: var(--text-secondary);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+@media (max-width: 640px) {
+  .tabs {
+    gap: 0.15rem;
+  }
+  .tab {
+    padding: 0.45rem 0.85rem;
+    font-size: 0.85rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* v29 typing-friendly fields: ≥16px prevents iOS zoom */
+textarea.typing-field { font-size: 16px !important; line-height: 1.4; padding: .7rem .85rem; min-height: 48px; resize: none; overflow-y: auto; }
