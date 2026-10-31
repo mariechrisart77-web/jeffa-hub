@@ -187,7 +187,9 @@ export function buildIdentity({ profile = {}, resolved = {}, card = null, adult 
 
   // nicht-18+-Profile: FSK18-Merkmale aus der Identität entfernen
   const isAdultProfile = profile.adult === true || profile.fsk === true || profile.fsk18 === true;
-  const allowFsk = adult === false ? false : (adult === true ? isAdultProfile : isAdultProfile);
+  // v81: Request-`adult` ist maßgeblich; Herabstufen nur bei ausdrücklicher Profil-Sperre.
+  const explicitlyNever = profile.adult === 'never' || profile.adultMode === false;
+  const allowFsk = adult === true ? !explicitlyNever : (adult === false ? false : isAdultProfile);
   const visible = allowFsk ? segs : segs.filter((s) => !FSK18_ID_RX.test(s));
 
   const buckets = { face: [], hair: [], eyes: [], skin: [], body: [], tattoos: [], piercings: [] };

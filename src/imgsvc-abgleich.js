@@ -215,7 +215,7 @@ export function abgleich({ profile = {}, resolved = {}, photo = {}, parts = {}, 
     if (removed.length) for (const { k, s } of removed) P[k] = dropSegs(P[k], [s]);
     if (hitSegs.length) {
       identity = joinSegs(filtered);
-      warnings.push(`FSK18-Details aus dem Profil für dieses Bild entfernt (Profil nicht 18+): ${hitSegs.slice(0, 4).join(' / ')}`);
+      warnings.push(`FSK18-Details aus dem Profil für dieses Bild entfernt (Modus jugendfrei): ${hitSegs.slice(0, 4).join(' / ')}`);
     }
   }
 
@@ -317,7 +317,7 @@ export function abgleich({ profile = {}, resolved = {}, photo = {}, parts = {}, 
       if (typeof P[k] !== 'string' || !P[k] || !isHit(P[k])) continue;
       const before = P[k];
       P[k] = tidy(splitSegs(P[k]).map((x) => (isHit(x) ? x.replace(/\s*\b(with|showing|and)\b.*$/i, '') : x)).filter((x) => x && !isHit(x)).join(', '));
-      if (P[k] !== before) warnings.push(`FSK18-Details aus der Auswahl für dieses Bild entfernt (Profil nicht 18+): ${before.slice(0, 80)}`);
+      if (P[k] !== before) warnings.push(`FSK18-Details aus der Auswahl für dieses Bild entfernt (Modus jugendfrei): ${before.slice(0, 80)}`);
     }
   }
 

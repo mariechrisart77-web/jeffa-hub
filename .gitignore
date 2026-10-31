@@ -7,3 +7,4 @@ dist
 .deploy/
 dist/
 backups/
+dist/

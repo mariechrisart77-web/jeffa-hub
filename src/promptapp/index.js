@@ -48,25 +48,24 @@ export const SCENE_DEFAULTS = {
 };
 
 /**
- * 21+/FSK18-Guard: der Request muss `adult === true` senden UND das Profil darf nicht ausdrücklich
- * nicht-18+ sein (`adult|fsk|fsk18 === false`). Profile ohne Flag gelten als offen – der Nutzer
- * entscheidet über die Anfrage/Presets, das Bare-Profil wird nicht herabgestuft.
+ * 21+/FSK18-Guard: der Request-Flag `adult === true` ist maßgeblich (v81). Herabgestuft wird nur
+ * noch bei ausdrücklicher Sperre im Profil (`adult === 'never'` oder `adultMode === false`).
+ * Ein Profil-Flag `adult|fsk|fsk18 === false` stuft eine adult-Anfrage NICHT mehr herab.
  * `ph` wird IN-PLACE bereinigt (Aufrufer erwartet Änderungen am selben Objekt).
  */
 export function guardAdult({ profile = {}, adult = false, ph = {}, notes = [] } = {}) {
-  const explicitNotAdult = profile.adult === false || profile.fsk === false || profile.fsk18 === false;
+  const explicitNotAdult = profile.adult === 'never' || profile.adultMode === false;
   const effectiveAdult = !!adult && !explicitNotAdult;
   if (!effectiveAdult) {
     for (const k of ['intensity', 'koerper']) {
       if (hasOwn(ph, k) && String(ph[k] || '').trim()) {
-        notes.push(`FSK18-Preset „${k}“ ignoriert (Profil nicht 18+)`);
+        notes.push(`FSK18-Preset „${k}“ ignoriert (Modus jugendfrei)`);
         delete ph[k];
       }
     }
     if (hasOwn(ph, 'outfit') && /\b(latex|lingerie|nude|nackt|micro\s*-?\s*bikini|topless|bikini|bodysuit|sideboob|underboob|cup bust)\b/i.test(String(ph.outfit))) {
-      notes.push('Kleidungs-Preset auf SFW reduziert (Profil nicht 18+)');
-      notes.push('FSK18-Details aus der Auswahl für dieses Bild entfernt (Profil nicht 18+)');
-      ph.outfit = 'casual summer outfit';
+      notes.push('FSK18-Details aus der Auswahl für dieses Bild entfernt (Modus jugendfrei)');
+      ph.outfit = ''; // v81: '' = automatisch → Story/Profil-Default, danach SFW-Filter (überdeckt auch resolved.photo.outfit)
     }
   }
   return { effectiveAdult, ph, notes };
@@ -158,7 +157,7 @@ function stripFsk18(identity, parts, notes, opts = {}) {
     partsOut[k] = kept.join(', ');
   }
   if (hit.length) {
-    notes.push(`FSK18-Details aus dem Profil für dieses Bild entfernt (Profil nicht 18+): ${dedupe(hit).slice(0, 4).join(' / ')}`);
+    notes.push(`FSK18-Details aus dem Profil für dieses Bild entfernt (Modus jugendfrei): ${dedupe(hit).slice(0, 4).join(' / ')}`);
   }
   return { identity: identityOut, parts: partsOut };
 }
@@ -178,14 +177,14 @@ function applySfwToParts(parts, scene = '', notes = [], opts = {}) {
   if (!out.pose || !String(out.pose).trim()) {
     const fallback = neutralPose(scene);
     if (parts.pose && String(parts.pose).trim()) {
-      notes.push(`Pose auf SFW-Variante ersetzt („${fallback}“) – Profil nicht 18+`);
+      notes.push(`Pose auf SFW-Variante ersetzt („${fallback}“) – Modus jugendfrei`);
     }
     out.pose = fallback;
   }
   // Outfit: bei FSK18-Kleidung → casual summer outfit
   if (!out.outfit || !String(out.outfit).trim()) out.outfit = 'casual summer outfit';
   if (dropped.length) {
-    notes.push(`FSK18-Inhalte für dieses Bild entfernt (Profil nicht 18+): ${dropped.join(', ')}`);
+    notes.push(`FSK18-Inhalte für dieses Bild entfernt (Modus jugendfrei): ${dropped.join(', ')}`);
   }
   return out;
 }
@@ -278,7 +277,7 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
       notes.push(`Pose an Story-Ort „${detected.location}“ angepasst (nicht Bett)`);
     } else if (/\bleds?\s+spread|spread\s+legs\b/i.test(poseText)) {
       parts.pose = (detected && detected.pose) || neutralPose(str(parts.scene) + ' ' + str(parts.background));
-      notes.push('FSK18-Pose auf neutralen Stand/Sitz reduziert (Profil nicht 18+)');
+      notes.push('FSK18-Pose auf neutralen Stand/Sitz reduziert (Modus jugendfrei)');
     }
     const stripped = stripFsk18(identity, parts, notes, { allowBed: storyLooksBedroom });
     identity = stripped.identity; parts = stripped.parts;

@@ -250,21 +250,33 @@ test('v74 garment-neg: bikini aktiv → topless im Negativ; story dress → nich
 });
 
 // ---------- Non-18+-Pfad ----------
-test('v74 non-18+: FSK18-Presets (Koerper/Intensity) werden ignoriert mit Note', () => {
+test('v81 non-18+: adult-Profilflag stuft adult-Anfrage nicht mehr herab', () => {
   const notes = [];
   const ph = { intensity: 'stark', koerper: 'piercings1' };
   const { effectiveAdult } = guardAdult({ profile: SERA, adult: true, ph, notes });
+  assert.equal(effectiveAdult, true);
+  assert.equal(ph.intensity, 'stark');
+  assert.equal(ph.koerper, 'piercings1');
+  assert.ok(!notes.some((n) => /FSK18-Preset/.test(n)));
+});
+
+test('v81 non-18+: FSK18-Presets werden nur im jugendfreien Modus ignoriert', () => {
+  const notes = [];
+  const ph = { intensity: 'stark', koerper: 'piercings1' };
+  const { effectiveAdult } = guardAdult({ profile: SERA, adult: false, ph, notes });
   assert.equal(effectiveAdult, false);
   assert.ok(!ph.intensity && !ph.koerper);
   assert.ok(notes.some((n) => /FSK18-Preset/.test(n)));
+  assert.ok(notes.some((n) => /Modus jugendfrei/.test(n)));
 });
 
-test('v74 non-18+: Bikini-Outfit wird auf SFW reduziert', () => {
+test('v81 non-18+: Bikini-Outfit wird im jugendfreien Modus ohne Ersatzwert geloescht', () => {
   const notes = [];
   const ph = { outfit: 'micro bikini latex' };
-  guardAdult({ profile: SERA, adult: true, ph, notes });
-  assert.equal(ph.outfit, 'casual summer outfit');
-  assert.ok(notes.some((n) => /SFW/.test(n)));
+  guardAdult({ profile: SERA, adult: false, ph, notes });
+  assert.equal(ph.outfit, '');
+  assert.ok(notes.some((n) => /FSK18-Details aus der Auswahl/.test(n)));
+  assert.ok(!notes.some((n) => /casual summer outfit|Dropdown-Kleidung/.test(n)));
 });
 
 // ---------- minor-risk ----------

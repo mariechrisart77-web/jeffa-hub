@@ -531,3 +531,19 @@ textarea.typing-field { font-size: 16px !important; line-height: 1.4; padding: .
 /* v66: roter Neuigkeiten-Punkt */
 .tab-btn { position: relative; }
 .tab-btn.has-news::after { content: ''; position: absolute; top: 4px; right: 6px; width: 9px; height: 9px; border-radius: 50%; background: #ff3b30; box-shadow: 0 0 0 2px var(--bg, #111); }
+
+/* v81: randloser Chat auf dem Handy */
+@media (max-width:700px){
+  #tab-chat .messages{padding: .35rem max(0px, env(safe-area-inset-right)) .35rem max(0px, env(safe-area-inset-left)); gap:.3rem}
+  #tab-chat .msg{max-width:100%; width:100%; align-self:stretch}
+  #tab-chat .msg.user, #tab-chat .msg.assistant{align-self:stretch; align-items:flex-start}
+  #tab-chat .msg-bubble{border-radius:0; padding:.5rem max(.6rem, env(safe-area-inset-left)) .5rem max(.6rem, env(safe-area-inset-right)); width:100%; box-sizing:border-box; text-align:left}
+  #tab-chat .msg.user .msg-bubble{border-bottom-right-radius:0; text-align:left}
+  #tab-chat .msg.assistant .msg-bubble{border-bottom-left-radius:0}
+  #tab-chat .msg-meta, #tab-chat .msg-notes, #tab-chat .img-info, #tab-chat .img-warn{margin-left:0; margin-right:0; width:100%; box-sizing:border-box; padding-left:max(.6rem, env(safe-area-inset-left)); padding-right:max(.6rem, env(safe-area-inset-right))}
+  #tab-chat .msg-bubble img, #tab-chat .msg-bubble video{max-width:100%}
+  #tab-chat .chat-header{padding:.25rem .5rem}
+  #tab-chat .profile-info .profile-avatar{font-size:1.1rem; max-width:32px; max-height:32px; width:32px; height:32px; border-radius:50%; overflow:hidden}
+  #tab-bot .bot-list{padding-left:max(0px, env(safe-area-inset-left)); padding-right:max(0px, env(safe-area-inset-right))}
+  #tab-bot .bot-msg{max-width:100%; width:100%; align-self:stretch; border-radius:0}
+}
