@@ -39,6 +39,8 @@ export interface Env {
   BILD_URL?: string;
   BILD_TIMEOUT_MS?: string;
   LUMIAROUTER_API_KEY?: string; // v71: Vision-Bildcheck (Bild nach Generierung prüfen)
+  KOLLAB_GEMINI_MODEL?: string; // v86: Modell für Kollab-Mitglieder
+  CLAUDE_GATEWAY_MODEL?: string; // v86: Modell für Claude-Vorschläge
   IMG_CHECK_MODEL?: string; // Default: claude-haiku-4-5
   IMG_AUTOCHECK?: string; // '1' = Bildcheck standardmäßig an
   IMG_VISION_MAX_USD?: string; // Monatsdeckel für Vision-Checks (optional)

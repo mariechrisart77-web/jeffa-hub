@@ -28,6 +28,7 @@ function render(root) {
   let html = '<div style="display:flex;flex-direction:column;gap:1.5rem;">';
   
   if (!activeGroup) {
+    html += '<div id="kollab-team"></div>';
     html += '<div><h2 style="font-size:1.1rem;font-weight:600;margin-bottom:1rem;">Gruppen</h2>';
     
     if (groups.length > 0) {
@@ -125,6 +126,7 @@ function render(root) {
   root.innerHTML = html; root.querySelectorAll('[data-typing-goal]').forEach(t => setupTyping(t)); root.querySelectorAll('form input[type=text]').forEach(i => { i.setAttribute('autocorrect', 'on'); i.setAttribute('spellcheck', 'true'); i.setAttribute('lang', 'de'); i.addEventListener('keydown', e => { if (e.key === 'Enter' && isTouchDevice()) e.preventDefault(); }); });
   
   if (!activeGroup) {
+    import('./kollab-team.js').then(m => m.renderTeam(root.querySelector('#kollab-team'))).catch(() => {});
     root.querySelectorAll('[data-open-group]').forEach(el => {
       el.addEventListener('click', async () => {
         const id = el.dataset.openGroup;

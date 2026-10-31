@@ -7,6 +7,7 @@ import { authState, lockScreen } from './shared/auth.js';
 import { getSession } from './shared/api.js';
 import { initLightbox } from './shared/lightbox.js';
 import { applyTabOrder, moveId, TAB_ORDER_KEY } from './shared/taborder.js';
+import { loadAndApplySiteConfig, ensureWidgets } from './site-apply.js';
 initLightbox();
 
 const tabBtns = document.querySelectorAll('.tab-btn');
@@ -123,6 +124,7 @@ async function switchTab(name) {
   }
   // every non-chat page opens at the top
   if (name !== 'chat') { const pn = document.getElementById(`tab-${name}`); if (pn) requestAnimationFrame(() => { pn.scrollTop = 0; }); }
+  try { ensureWidgets(name); } catch { /* Widgets dürfen nichts kaputt machen */ }
 }
 
 tabBtns.forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
@@ -371,6 +373,9 @@ async function init() {
   } catch (e) {
     console.warn('authState failed (offline?)', e);
   }
+
+  // QA v86: nicht abwarten – Cache wird sofort angewendet, der Abruf darf den Start nicht bremsen.
+  try { loadAndApplySiteConfig({ switchTab, startNewChat }).catch(() => {}); } catch { /* Seiten-Anpassungen optional */ }
   
   if (state && !state.session) {
     document.body.classList.add('locked');

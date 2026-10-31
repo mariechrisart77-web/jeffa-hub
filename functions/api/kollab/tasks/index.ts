@@ -1,5 +1,6 @@
 import { Env } from "../../../../src/env";
 import { checkRateLimit } from "../../../../src/ratelimit";
+import { requireRole } from "../../../../src/auth";
 
 interface Task {
   id: number;
@@ -26,6 +27,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 };
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
+  await requireRole(context, "admin");
   const ip = context.request.headers.get("cf-connecting-ip") || "unknown";
   await checkRateLimit(context.env, ip);
 

@@ -560,3 +560,8 @@ textarea.typing-field { font-size: 16px !important; line-height: 1.4; padding: .
 .tab-btn.dragging { opacity:.85; transform:scale(1.08); box-shadow:0 6px 18px rgba(0,0,0,.35); z-index:2; }
 nav.tabs-nav.reordering { touch-action:none; }
 nav.tabs-nav.reordering .tab-btn { transition:transform .12s; }
+
+
+/* v86: Seiten-Anpassungen – Bausteine */
+.site-widgets{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+.header-right .site-widgets{margin:0}

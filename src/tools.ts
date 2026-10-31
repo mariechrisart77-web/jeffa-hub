@@ -4,7 +4,7 @@ import { listKeys, setKey, type Provider as KeyProvider } from "./keys";
 
 export type Role = "admin" | "read" | "none";
 type P = Record<string, unknown>;
-interface ToolDef { name: string; d: string; p?: Record<string, string>; req?: string[]; write?: boolean; client?: boolean }
+interface ToolDef { name: string; d: string; p?: Record<string, string>; req?: string[]; write?: boolean; client?: boolean; arrayItems?: Record<string, string> }
 
 // Compact schemas: p = {arg: "type:description"}
 export const TOOLS: ToolDef[] = [
@@ -21,6 +21,16 @@ export const TOOLS: ToolDef[] = [
     p: { id: "integer:", title: "string:", body: "string:", assignee: "string:", status: "string:offen|in_arbeit|erledigt" } },
   { name: "toggle_key", d: "API-Schlüssel aktivieren/deaktivieren (nie Werte zeigen)", write: true,
     p: { provider: "string:gemini|openrouter|venice|hf|xai|vnaipro|groq|mistral|runware", enabled: "boolean:" }, req: ["provider", "enabled"] },
+  // v86: Kollab-Team – Seiten-Anpassungen + Aufgaben
+  { name: "read_site_config", d: "Seiten-Anpassungen (Site-Config) lesen" },
+  { name: "list_site_changes", d: "Änderungsverlauf der Seiten-Anpassungen", p: { limit: "integer:1-50" } },
+  { name: "set_site_config", d: "Seiten-Anpassungen ändern (Texte, Schrift, Farben, Menü, Bausteine)", write: true,
+    p: { changes: "array:Liste {key,value}. Schlüssel: text.app_title, text.tab.<tab>, font.family (system|serif|rounded|mono), font.size (13-20), color.<accent|bg-main|bg-card|bg-input|text-primary|text-secondary|text-tertiary|border|success|error|warning> (#rrggbb), menu.tabs (Liste {id,hidden}), widgets (Liste von Bausteinen {id,type:model_picker|link_button|action_button,area:header|tab:<tab>,order,label,icon,module|route|action})" }, req: ["changes"], arrayItems: { key: "string:Config-Schlüssel", value: "string:Wert als Text; Listen/Objekte als JSON-Text; leer = auf Standard zurücksetzen" } },
+  { name: "undo_site_change", d: "Letzte Seiten-Anpassung rückgängig machen", write: true, p: { id: "integer:Änderungs-ID" }, req: ["id"] },
+  { name: "create_task", d: "Kollab-Aufgabe für das Team anlegen", write: true,
+    p: { title: "string:", body: "string:", severity: "string:klein|groß", assignee: "string:" }, req: ["title"] },
+  { name: "send_to_claude", d: "Aufgabe als Vorschlag an Claude senden (nur Vorschlag, kein Deploy)", write: true,
+    p: { task_id: "integer:", extra_context: "string:Zusatzinfos, max 8000 Zeichen" }, req: ["task_id"] },
 ];
 
 export function toolsFor(role: Role): ToolDef[] {
@@ -31,6 +41,15 @@ function schema(t: ToolDef) {
   const properties: P = {};
   for (const [k, v] of Object.entries(t.p || {})) {
     const [type, description] = v.split(/:(.*)/s);
+    if (type === "array" && t.arrayItems) {
+      const items: P = {};
+      for (const [ik, iv] of Object.entries(t.arrayItems)) {
+        const [it, idesc] = iv.split(/:(.*)/s);
+        items[ik] = idesc ? { type: it, description: idesc } : { type: it };
+      }
+      properties[k] = description ? { type, description, items: { type: "object", properties: items } } : { type, items: { type: "object", properties: items } };
+      continue;
+    }
     properties[k] = description ? { type, description } : { type };
   }
   return { type: "object", properties, ...(t.req ? { required: t.req } : {}) };
@@ -51,7 +70,7 @@ export async function audit(env: Env, role: Role, tool: string, args: unknown, o
 }
 
 /** Execute a server-side tool. Role check is enforced here, independent of what the model asked. */
-export async function execServerTool(env: Env, role: Role, name: string, a: P): Promise<unknown> {
+export async function execServerTool(env: Env, role: Role, name: string, a: P, actor: string = "admin"): Promise<unknown> {
   const t = TOOLS.find((x) => x.name === name);
   if (!t) throw new Error("Unbekanntes Werkzeug");
   if (t.client) throw new Error("Client-Werkzeug");
@@ -71,10 +90,17 @@ export async function execServerTool(env: Env, role: Role, name: string, a: P): 
     }
     case "list_tasks": {
       if (!db) return [];
-      const r = a.status
-        ? await db.prepare("SELECT id,title,assignee,status FROM tasks WHERE status=? ORDER BY id DESC LIMIT 30").bind(String(a.status)).all()
-        : await db.prepare("SELECT id,title,assignee,status FROM tasks ORDER BY id DESC LIMIT 30").all();
-      return r.results;
+      try {
+        const r = a.status
+          ? await db.prepare("SELECT t.id,t.title,t.assignee,t.status,m.severity,m.state FROM tasks t LEFT JOIN kollab_task_meta m ON m.task_id=t.id WHERE t.status=? ORDER BY t.id DESC LIMIT 30").bind(String(a.status)).all()
+          : await db.prepare("SELECT t.id,t.title,t.assignee,t.status,m.severity,m.state FROM tasks t LEFT JOIN kollab_task_meta m ON m.task_id=t.id ORDER BY t.id DESC LIMIT 30").all();
+        return r.results;
+      } catch {
+        const r = a.status
+          ? await db.prepare("SELECT id,title,assignee,status FROM tasks WHERE status=? ORDER BY id DESC LIMIT 30").bind(String(a.status)).all()
+          : await db.prepare("SELECT id,title,assignee,status FROM tasks ORDER BY id DESC LIMIT 30").all();
+        return r.results;
+      }
     }
     case "upsert_task": {
       if (!db) throw new Error("Keine Datenbank");
@@ -92,6 +118,46 @@ export async function execServerTool(env: Env, role: Role, name: string, a: P): 
       if (!["gemini", "openrouter", "venice", "hf", "xai", "vnaipro", "groq", "mistral", "runware"].includes(prov)) throw new Error("Unbekannter Provider");
       await setKey(env, prov, undefined, Boolean(a.enabled));
       return { provider: prov, enabled: Boolean(a.enabled) };
+    }
+    case "read_site_config": {
+      const { loadConfig } = await import("./site-config-store");
+      return await loadConfig(env);
+    }
+    case "list_site_changes": {
+      const { listChanges } = await import("./site-config-store");
+      return await listChanges(env, Math.min(50, Math.max(1, Number(a.limit) || 20)));
+    }
+    case "set_site_config": {
+      const { setConfig } = await import("./site-config-store");
+      const raw = a.changes;
+      if (!Array.isArray(raw)) throw new Error("changes muss eine Liste sein");
+      // QA v86: Gemini liefert Werte als Text (Schema kennt keine Mischtypen) → JSON-Listen/-Objekte auspacken, leer = Standard.
+      const val = (v: unknown) => {
+        if (typeof v !== "string") return v ?? null;
+        const s = v.trim();
+        if (!s || s === "null") return null;
+        if (/^[\[{]/.test(s)) { try { return JSON.parse(s); } catch { return s; } }
+        return s;
+      };
+      return await setConfig(env, actor, raw.map((c: any) => ({ key: String(c?.key ?? ""), value: val(c?.value) })));
+    }
+    case "undo_site_change": {
+      const { undoChange } = await import("./site-config-store");
+      return await undoChange(env, actor, Number(a.id));
+    }
+    case "create_task": {
+      if (!db) throw new Error("Keine Datenbank");
+      const sev = a.severity === "groß" || a.severity === "klein" ? String(a.severity) : null;
+      const ins = await db.prepare("INSERT INTO tasks (title, body, assignee, status) VALUES (?, ?, ?, 'offen') RETURNING id,title,status")
+        .bind(String(a.title), a.body ?? null, a.assignee ? String(a.assignee) : "Gemini").first() as any;
+      if (ins?.id && sev) {
+        try { await db.prepare("INSERT INTO kollab_task_meta (task_id, severity, state) VALUES (?, ?, NULL) ON CONFLICT(task_id) DO UPDATE SET severity=excluded.severity").bind(ins.id, sev).run(); } catch { /* meta optional */ }
+      }
+      return ins;
+    }
+    case "send_to_claude": {
+      const { sendToClaude } = await import("./kollab-claude-send");
+      return await sendToClaude(env, Number(a.task_id), a.extra_context ? String(a.extra_context) : "");
     }
   }
   throw new Error("Nicht implementiert");
