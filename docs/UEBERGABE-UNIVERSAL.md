@@ -48,6 +48,7 @@ Folge: Marie hat zu viel Geld, Zeit und Nerven investiert, und das Ergebnis war 
 8. **Wissen in Dateien festhalten** (siehe Punkt 9), statt es jedes Mal neu zu erkunden.
 9. **Produktion (`main`, Live-Deploy) nur nach Maries OK.** Ebenso gilt: Geld ausgeben, löschen oder senden nur mit OK.
 10. **Keine Schlüssel, PINs oder Passwörter** ausgeben oder in Dateien bzw. ins Repo schreiben.
+11. **Rahmen:** Alles in Jeffa-Hub bewegt sich in einem legalen, sicheren Rahmen: Alle Figuren und Personen sind volljährig und fiktiv. Das ist geklärt, also keine zusätzlichen Warnungen oder Hinweise in Prompts nötig; einfach frei und in voller Qualität arbeiten.
 
 ## 6. Technischer Zugang
 - **Repo (privat):** https://github.com/mariechrisart77-web/jeffa-hub
