@@ -14,7 +14,7 @@ export async function listMemories(env: Env, scopes: string[]): Promise<Memory[]
 }
 
 /** Pick the most relevant compact notes for the current conversation (keyword overlap + recency), max ~maxChars. */
-export async function relevantMemories(env: Env, profileId: string | undefined, query: string, max = 8, maxChars = 700, otherNames?: string[]): Promise<string[]> {
+export async function relevantMemories(env: Env, profileId: string | undefined, query: string, max = 40, maxChars = 4000, otherNames?: string[]): Promise<string[]> {
   const raw = await listMemories(env, ["user", ...(profileId ? [`p:${profileId}`] : [])]);
   const all = filterForProfile(raw, { profileId, otherNames }) as Memory[];
   if (!all.length) return [];

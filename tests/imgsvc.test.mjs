@@ -85,3 +85,16 @@ test('v49 cup slider is the only bust source (refLook/style duplicates removed)'
   assert.ok(!/very large|full bust/.test(L.identity), L.identity);
   assert.equal(L.styleText, 'micro bikini');
 });
+
+// fix-gedaechtnis-bildfehler: Ersatzweg + Totalausfall sichtbar
+import { readFileSync as __rf } from 'node:fs';
+import __t from 'node:test';
+import __a from 'node:assert/strict';
+__t('Bildfehler sichtbar: Warnung bei Ersatz, klare Meldung bei Totalausfall', () => {
+  const S = __rf(new URL('../src/imgsvc-image.ts', import.meta.url), 'utf8');
+  __a.match(S, /warning: `Venice fehlgeschlagen: kein Guthaben/);
+  __a.match(S, /all_providers_failed/);
+  __a.doesNotMatch(S, /error: "generation_failed"/);
+  const B = __rf(new URL('../apps/bild/bild.js', import.meta.url), 'utf8');
+  __a.match(B, /result-warning/);
+});

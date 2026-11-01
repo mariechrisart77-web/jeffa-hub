@@ -223,7 +223,7 @@ test('v82 Verdrahtung chat.js', () => {
 test('v82 Verdrahtung profiles.js / Server', () => {
   assert.match(PR, /card\.addEventListener\('click'[\s\S]{0,120}onOpenLastChat/);
   assert.match(PR, /new-chat-btn[\s\S]{0,400}onStartChat/);
-  assert.match(CT, /relevantMemories\(.*700, otherNames\)/);
+  assert.match(CT, /relevantMemories\(.*40, 4000, otherNames\)/);
   assert.match(CT, /nicht über dich/);
   assert.match(MT, /scopeForFact\(/); assert.match(MT, /filterForProfile\(/);
 });

@@ -103,7 +103,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     try {
       const q = trimmed.slice(-3).map((x) => x.content).join(" ").slice(-1500);
       const otherNames = Array.isArray(body.otherNames) ? body.otherNames.filter((n) => typeof n === "string").slice(0, 20).map((n) => n.slice(0, 40)) : undefined;
-      const mem = await relevantMemories(context.env, body.profileId ? String(body.profileId).slice(0, 80) : undefined, q, 8, 700, otherNames);
+      const mem = await relevantMemories(context.env, body.profileId ? String(body.profileId).slice(0, 80) : undefined, q, 40, 4000, otherNames);
       if (mem.length) systemPrompt += `\n\nGedächtnis (Fakten über den NUTZER – nicht über dich; nur nutzen wenn relevant):\n${mem.map((f) => `- ${f}`).join("\n")}`;
     } catch (e) { console.warn("memory", (e as Error).message); }
   }

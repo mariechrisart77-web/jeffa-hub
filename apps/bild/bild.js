@@ -183,6 +183,7 @@ function addResult(result, body) {
     model: result.model || 'unknown',
     cost: result.cost || costOf('single', document.getElementById('quality-select').value),
     seed: result.seed,
+    warning: result.warning ? String(result.warning).replace(/[<>&]/g, '') : '',
     prompt: result.prompt || body.prompt || body.context?.scene
   };
   results.unshift(item);
@@ -198,7 +199,8 @@ function renderResults() {
     card.className = 'result-card';
     card.innerHTML = `
       <img src="${item.image}" alt="Bild ${idx + 1}">
-      <div class="result-meta">${item.model} · ${item.cost.toFixed(2)} $ · Seed ${item.seed || '?'}</div>
+      <div class="result-meta">${item.model} · ${item.cost.toFixed(2)} $ · Seed ${item.seed || '?'}</div>${item.warning ? `
+      <div class="result-warning" style="color:#e0a000">⚠️ ${item.warning}</div>` : ''}
       <details>
         <summary>Prompt</summary>
         <pre>${item.prompt || 'N/A'}</pre>
