@@ -83,7 +83,7 @@ test('Modelltabelle: jeder Dropdown-Wert gemappt, FSK18 nur unzensierte Modelle,
   }
   assert.equal(routeModel({ quality: 'quatsch' }).q, 'single');
   assert.equal(routeModel({ quality: 'hq', adult: true }).steps, 50);
-  assert.equal(routeModel({ quality: 'hq' }).model, 'qwen-image-3');
+  assert.equal(routeModel({ quality: 'hq' }).model, 'flux-2-pro'); // v87
 });
 
 test('chat.js baut keine Prompts mehr; Bildcode wird bei Bedarf geladen', () => {

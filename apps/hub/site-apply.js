@@ -92,7 +92,7 @@ function pickImage(label) {
     h.textContent = label;
     box.appendChild(h);
     const finish = (v) => { back.remove(); resolve(v); };
-    for (const val of ['', 'z-image-turbo', 'qwen-image-2-1-turbo', 'qwen-image-3']) {
+    for (const val of ['', 'z-image-turbo', 'qwen-image-2-1-turbo', 'flux-2-pro']) {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'btn-sm secondary';

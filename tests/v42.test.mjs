@@ -40,5 +40,5 @@ test('FSK18 Typ-Pakete: a few bundles, max 2, fixed text, hidden in Standard', (
 import { routeModel as rm46 } from '../src/imgsvc-core.js';
 test('v46 AP5: FSK18 always chroma', () => {
   for (const o of [{ quality: 'qualitaet' }, { quality: 'mittel' }, { style: 'comic' }, { refMode: 'edit', hasRef: true }]) assert.equal(rm46({ ...o, adult: true }).model, 'chroma');
-  assert.equal(rm46({ quality: 'qualitaet' }).model, 'qwen-image-3');
+  assert.equal(rm46({ quality: 'qualitaet' }).model, 'flux-2-pro'); // v87: qwen-image-3 wird in jugendfrei von Venice verpixelt
 });

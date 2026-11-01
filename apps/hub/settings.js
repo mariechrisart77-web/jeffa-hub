@@ -72,7 +72,7 @@ export async function init(root) {
           <option value="runware">Runware Spar – FLUX schnell (≈ 0,002 $) · braucht Runware-Key im Tresor</option>
           <option value="mix">Spar-Mix: Hintergrund + Person getrennt (≈ 0,03 $) · Standard – in FSK18 automatisch chroma-Einzelbild (≈ 0,01 $)</option>
           <option value="lustify">🔞 Lustify v8 – explizit, 30 Schritte (≈ 0,01 $) · nur FSK18 (Standard → Einzelbild)</option>
-          <option value="hq">Hohe Qualität – Standard: qwen-image-3 (≈ 0,04 $) · FSK18: lustify v8 mit 50 Schritten (≈ 0,01 $)</option>
+          <option value="hq">Hohe Qualität – Standard: flux-2-pro (≈ 0,03 $) · FSK18: lustify v8 mit 50 Schritten (≈ 0,01 $)</option>
           <option value="refine">Premium + Nachschliff – Bild + Feinschliff (Standard qwen-2.1-pro-edit ≈ 0,06 $ · FSK18 chroma + qwen-edit-uncensored ≈ 0,05 $)</option>
           <option value="refine-firered">Premium FireRed – Bild + FireRed-Nachschliff (≈ 0,05 $) · Standard & FSK18</option>
           <option value="krea">Premium Standard – krea-v2-large (≈ 0,07 $) · nur Standard (FSK18 → chroma)</option>

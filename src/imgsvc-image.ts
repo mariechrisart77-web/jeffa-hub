@@ -1,5 +1,6 @@
 // Server-side prompt from the synced profile (spec r5) – single path for chat, Bild-App and 'jeffa:image'.
 import { storeGenerated } from "./r2img.js";
+import { sizeParamsFor } from "./venice-size.js";
 import { trackUsage } from "./usage";
 import { Env } from "./env";
 import { requireRole, AuthError } from "./auth";
@@ -174,7 +175,7 @@ export async function imageNewMode(ctx: EventContext<Env, any, any>, env: Env, b
     const chroma = model === "chroma";
     const res = await fetch("https://api.venice.ai/api/v1/image/generate", {
       method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify({ model, prompt: p.slice(0, chroma ? 3000 : 1500), negative_prompt: neg.slice(0, 800), seed, hide_watermark: true, width: chroma ? 768 : 1024, height: 1024, format: "webp", safe_mode: !body.adult, ...(model.startsWith("lustify") ? { steps: steps || 30, cfg_scale: 5 } : {}) }),
+      body: JSON.stringify({ model, prompt: p.slice(0, chroma ? 3000 : 1500), negative_prompt: neg.slice(0, 800), seed, hide_watermark: true, ...sizeParamsFor(model, chroma ? 768 : 1024, 1024), format: "webp", safe_mode: !body.adult, ...(model.startsWith("lustify") ? { steps: steps || 30, cfg_scale: 5 } : {}) }),
     });
     if (!res.ok) { const t = (await res.text()).slice(0, 200); console.error("venice gen", res.status, t); throw new Error(`gen ${res.status}: ${t}`); }
     const d: any = await res.json(); const im = d.images?.[0];

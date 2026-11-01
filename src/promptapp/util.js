@@ -23,6 +23,22 @@ export function dedupe(list) {
 }
 export function dedupeText(t) { return dedupe(splitSegs(t)).join(', '); }
 
+const AGE_PHRASE_RX = [
+  /\b(?:in|of) (?:her|his) (?:early |mid |late )?(?:\d0s|twenties|thirties|forties|fifties|sixties)\b/gi,
+  /\b(?:early|mid|late)[- ](?:20s|30s|40s|50s|twenties|thirties|forties|fifties|sixties)\b/gi,
+  /\btwenty[- ]something\b/gi,
+  /\b\d{2}[- ]years?[- ]old\b/gi,
+  /\baged \d{2}\b/gi,
+];
+/** v87: widersprüchliche Altersangaben aus einem NICHT-Identitäts-Text entfernen (das Profilalter gilt). */
+export function stripConflictingAge(text, age) {
+  let t = String(text || '');
+  for (const rx of AGE_PHRASE_RX) t = t.replace(rx, '');
+  const n = +age;
+  if (Number.isFinite(n) && n >= 30) t = t.replace(/\byoung (woman|man)\b/gi, '$1');
+  return t.replace(/\s{2,}/g, ' ').replace(/\s+([,.])/g, '$1').replace(/(,\s*){2,}/g, ', ').replace(/^[\s,;.]+|[\s,;.]+$/g, '').trim();
+}
+
 export function truncateSegs(text, max) {
   const s = String(text || '');
   if (s.length <= max) return s;
@@ -36,6 +52,26 @@ export function truncateSegs(text, max) {
 }
 
 /** Segment(e) aus einem Text entfernen (Komma-getrennt) */
+/** v87: Negative gegen den positiven Text abgleichen – Segmente entfernen, die genau das Positive verbieten.
+ *  nackt → nude/naked/topless/bare breasts raus; topless → topless/bare breasts raus; Comic/Manhwa → cartoon/illustration raus.
+ *  „bikini top worn“ im Positiv lässt „topless“ im Negativ ausdrücklich stehen. */
+const CONF_GROUPS = [
+  { pos: /\b(nude|naked|nackt|no clothes|unclothed)\b/i, kill: ['nude', 'naked', 'nackt', 'no clothes', 'unclothed', 'without clothes', 'topless', 'bare breasts', 'bare chest', 'oben ohne'] },
+  { pos: /\b(topless|bare breasts|oben ohne)\b/i, kill: ['topless', 'bare breasts', 'bare chest', 'oben ohne'] },
+  { pos: /\b(comic|manhwa|webtoon|illustration|ink outlines|cel shading|line art)\b/i, kill: ['cartoon', 'comic', 'illustration', 'drawing', 'anime', 'manga', 'line art', 'cel shading', 'painting', '3d render', 'cgi'] },
+];
+export function dropNegativeConflicts(negative, positiveText) {
+  const pos = String(positiveText || '');
+  if (!pos.trim()) return String(negative || '');
+  const kill = new Set();
+  for (const g of CONF_GROUPS) if (g.pos.test(pos)) for (const w of g.kill) kill.add(w);
+  if (!kill.size) return String(negative || '');
+  return splitSegs(negative).filter((s) => {
+    const l = low(s).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return ![...kill].some((w) => l === w || l === 'no ' + w || l === w + ' only' || l === w + ' woman' || l === w + ' body');
+  }).join(', ');
+}
+
 export function dropSegs(text, segs) {
   const kill = new Set(segs.map((s) => low(String(s).trim())));
   return tidy(splitSegs(text).filter((s) => !kill.has(low(s))).join(', '));

@@ -155,7 +155,7 @@ const INTENSITY = [
 ];
 export const CATALOG = { outfit: OUTFIT, koerper: KOERPER, pose: POSE, intensity: INTENSITY, scene: SCENE, light: LIGHT, frame: FRAME, mood: MOOD, render: RENDER };
 export const RATES = { selten: 0.15, mittel: 0.33, oft: 0.6 };
-export const QUALITY = { spar: { model: '', cost: 0.01 }, mittel: { model: 'qwen-image-2-1-turbo', cost: 0.02 }, qualitaet: { model: 'qwen-image-3', cost: 0.04 } };
+export const QUALITY = { spar: { model: '', cost: 0.01 }, mittel: { model: 'qwen-image-2-1-turbo', cost: 0.02 }, qualitaet: { model: 'flux-2-pro', cost: 0.03 } }; // v87: jugendfrei; hemmungslos siehe Spar-Mix (Server)
 
 const catOf = (k) => (k === 'time' ? TIME_CATALOG : CATALOG[k]);
 const find = (k, id, adult) => { for (const [, opts] of catOf(k) || []) for (const o of opts) if (o[0] === id && (!o[3] || adult)) return o; return null; };

@@ -6,7 +6,13 @@ import { detectScene as detectSceneV83 } from './promptapp/scene-map.js';
 import { resolveLayers, minorRisk, scrubYouth, youthRisk, dedupeSeg, pickVariation, routeModel, buildRulePrompt, STYLE, NEG_SINGLE, vibeCues, useScene, stripConflicts, VARIATIONS, normQuality, fsk18Family } from './imgsvc-core.js';
 import { abgleich } from './imgsvc-abgleich.js';
 import { normalizeIntensity, intensityDefaults, intensityPose, poseForKind, poseKindOf, FRAMING, sharpTags } from './imgsvc-formulate.js';
-import { buildPromptPlan } from './promptapp/index.js';
+import { buildPromptPlan, PORTRAIT_RX } from './promptapp/index.js';
+import { dropNegativeConflicts } from './promptapp/util.js';
+import { sparMixModel } from './imgsvc-core.js';
+import { subjectOf } from './promptapp/identity.js';
+function stripPortraitWords(t) {
+  return String(t || '').replace(/\b(close-?up|portrait|headshot|head and shoulders|kopf und schultern|nahaufnahme|brustbild)\b/gi, '').replace(/\s{2,}/g, ' ').replace(/\s+([,.])/g, '$1').replace(/^[\s,]+|[\s,]+$/g, '').trim();
+}
 
 const AGE_MSG = 'Profil muss eindeutig erwachsen sein (18+)';
 const NEG_ADULT_REAL = 'cartoon, 3d render, cgi, doll, plastic skin, airbrushed, stiff posed portrait';
@@ -188,6 +194,11 @@ export function outfitPhrase(outfit, state) {
 export function outfitNegative(state) { const s = String(state || '').toLowerCase(); return /wet|nass|soak/.test(s) ? 'dry clothes, dry fabric, dry hair' : /torn/.test(s) ? 'intact clothes' : /dirty|schmutz/.test(s) ? 'clean spotless clothes' : ''; }
 const SOLO_NEG = 'extra people, second person, man, crowd, duplicate woman';
 const SOLO_NEG_MALE = 'extra people, second person, woman, crowd, duplicate man';
+// v87: Default-Negatives (alle Modi) und positive Kurzform für Modelle, die negative_prompt ignorieren
+const NEG_DEFAULTS_FRONT = 'broken hands, broken fingers, bad teeth, crooked teeth';
+const NAVEL_NEG = 'navel piercing, belly button piercing';
+const NAVEL_RX87 = /\bnavel|belly[- ]button|bauchnabel/i;
+const NEG_PHOTO87 = 'photorealistic, photo, photograph, realistic skin texture';
 const POSE_MARK = /\b(?:pose|action|outfit)\s*:/i;
 /** Teile eines Prompt-Textes für Prioritäts-Truncation (framing → Identität → Outfit zuerst) */
 export function sectionsOf(prompt) {
@@ -245,7 +256,7 @@ export function assemblePrompt(parts, L, { style = 'real', adult = false, variat
   const prompt = fitPrompt(scrubYouth(noWeights(sections.filter(Boolean).join('. '))), 2000);
   const negative = mergeNegative(noWeights([
     NEG_SINGLE, NEG_ANATOMY, adult && style !== 'comic' && style !== 'manhwa' ? NEG_ADULT_REAL : '', outfitNegative(P.outfit_state),
-    L.outfitNeg, L.corrections?.negative, presetNegative, solo ? (male ? SOLO_NEG_MALE : SOLO_NEG) : '', /^(real|story)$/.test(style) ? 'cropped head, head out of frame, cut off face' : '',
+    L.outfitNeg, L.corrections?.negative, presetNegative, solo ? (male ? SOLO_NEG_MALE : SOLO_NEG) : '', /^(real|story)$/.test(style) ? 'cropped head, head out of frame, cut off face' : '', style === 'comic' || style === 'manhwa' ? NEG_PHOTO87 : '',
   ].filter(Boolean).join(', ')), [], 1000);
   return { prompt, negative };
 }
@@ -254,7 +265,7 @@ const ID_LOCK = { hair: { text: '' }, eyes: { text: '' }, age: { text: '' } };
 const cleanPart = (t) => scrubYouth(stripConflicts(noWeights(String(t || '')), ID_LOCK).text);
 
 /** v74: Prompt-App-Adapter – nutzt buildPromptPlan für Prompt/Identität, hält Routing/Seeds/Story in imgsvc-plan.js. */
-const PROMPTAPP_MODELS = new Set(['lustify-v8', 'chroma', 'qwen-image-3', 'qwen-image-2-1-turbo', 'z-image-turbo']);
+const PROMPTAPP_MODELS = new Set(['lustify-v8', 'chroma', 'qwen-image-3', 'qwen-image-2-1-turbo', 'z-image-turbo', 'flux-2-pro']);
 
 /** pure Plan-Funktion; imageNewMode macht nur I/O drumherum. composeLLM(system, input) → Text (optional). */
 export async function buildImagePlan({ profile = {}, resolved = {}, card = null, corrections = {}, body = {}, prevStory = null, composeLLM = null, rnd = Math.random, hasRef = false, refMode = 'off' } = {}) {
@@ -284,6 +295,8 @@ export async function buildImagePlan({ profile = {}, resolved = {}, card = null,
   const explicitModel = !!(q0 && !/^(auto|single)$/i.test(q0));
   const quality = normQuality(!q0 || q0 === 'single' || q0 === 'auto' ? profile.photo?.quality || q0 || 'single' : q0);
   const route = routeModel({ style, adult, quality, refMode, hasRef, explicit: explicitModel, fsk18Sheer: false });
+  // v87: Porträt nur aus Nutzerquellen (Wunsch-Szene, Ausschnitt-Dropdown, body.camera, photoOverride.frame, Porträt-Pose)
+  const userPortrait = PORTRAIT_RX.test(String(sceneReq || '')) || PORTRAIT_RX.test(String(po && typeof po === 'object' ? po.frame || '' : '')) || PORTRAIT_RX.test(String(res.photo?.frame || '')) || PORTRAIT_RX.test(String(body.camera || '')) || PORTRAIT_RX.test(String(res.photo?.pose || ''));
 
   if (style === 'comicpage') {
     const r = buildRulePrompt(L, { style });
@@ -299,6 +312,8 @@ export async function buildImagePlan({ profile = {}, resolved = {}, card = null,
   const rule = ruleComposer({ ...L, scene: sceneReq }, prevStory, msgs);
   if (!parts) parts = rule;
   for (const k of PART_KEYS) parts[k] = cleanPart(parts[k]);
+  // v87: LLM-Kamera darf kein Porträt erfinden, wenn keine Nutzerquelle es will
+  if (!userPortrait && parts.camera && PORTRAIT_RX.test(parts.camera)) parts.camera = stripPortraitWords(parts.camera);
   // Story fortschreiben: LLM-Story über die Regel-Story mergen (Regel liefert Fallback für leere Felder)
   let story = composer === 'llm' ? mergeStory(rule.story, { ...(parts.story || {}), outfit_state: parts.story?.outfit_state || parts.outfit_state || '' }) : rule.story;
   // v70: Nässe verfällt bei Ortswechsel, sofern die neuesten Nachrichten nicht wieder Nässe nennen
@@ -347,9 +362,11 @@ export async function buildImagePlan({ profile = {}, resolved = {}, card = null,
   if (ph.frame) parts.camera = ph.frame;
   if (ph.mood) parts.expression = ph.mood;
   if (typeof body.camera === 'string' && body.camera) parts.camera = body.camera.slice(0, 120);
+  // v87: Porträt-Ausschnitt – Kamera fixieren; Ganzkörper-Pose kommt aus buildPromptPlan nicht zurück
+  if (userPortrait) parts.camera = (ph.frame && PORTRAIT_RX.test(ph.frame)) ? ph.frame : 'close-up portrait, head and shoulders';
   // v71: Pose-Intensität (nur adult) – Dropdown > Profil > Profilname-Fallback ('lora' → stark)
   const intensity = intensityDefaults({ profile, resolved: res, body });
-  if (adult && intensity) {
+  if (adult && intensity && !userPortrait) {
     const kind = poseKindOf(parts.pose);
     parts.pose = poseForKind(kind, intensityPose(intensity, kind));
     const extra = sharpTags({ intensity, outfit: parts.outfit || L.outfit || '', scene: [parts.scene, parts.background].join(' ') });
@@ -358,7 +375,8 @@ export async function buildImagePlan({ profile = {}, resolved = {}, card = null,
   // v73: Bikini nur wenn aktiv (Dropdown oder Story) → Oberteil erzwingen; sonst keine Bikini-Tags
   const bikiniActive = adult && /\bbikini\b/i.test(parts.outfit || '') && !/\b(nude|naked|nackt|topless|oben ohne)\b/i.test(parts.outfit || '');
   if (bikiniActive) parts.outfit = parts.outfit + ', bikini top worn, both triangles on';
-  const strongNeg = adult && intensity ? intensityNegatives({ intensity, frame: ph.frame || parts.camera }) : { extra: [], pinFrame: false };
+  const strongNeg = adult && intensity && !userPortrait ? intensityNegatives({ intensity, frame: ph.frame || parts.camera }) : { extra: [], pinFrame: false };
+
   // v69: Abgleich (Dropdown > Story > Profil-Defaults, Alter, FSK18, Hände, Pose, Szene) – bereinigte Identität per L-Override
   const ab = abgleich({ profile, resolved: res, photo: ph, parts, story, adult, msgs });
   if (ab.block) return { error: { status: 403, code: ab.block.code, message: ab.block.message } };
@@ -375,6 +393,10 @@ export async function buildImagePlan({ profile = {}, resolved = {}, card = null,
   const allowed = peopleAllowed(story, msgs);
   parts = filterPeople(parts, allowed);
   if (!allowed) story = { ...story, present: ['the woman'] };
+  // v87: Spar-Mix nur ohne Partner/Mann, adult und ohne explizite Sonderwahl
+  const maleSubject = subjectOf(profile).sex === 'man';
+  const partnerNames = allowed ? (story?.present || []).filter((p) => !/^(the )?woman$|^she$|^her$/i.test(String(p).trim())).map((p) => String(p).slice(0, 40)).slice(0, 3) : [];
+  { const sm = sparMixModel({ adult, quality, partner: allowed, male: maleSubject }); if (sm) { route.model = sm.model; route.cost = sm.cost; route.steps = undefined; route.edit = null; route.mix = false; } }
 
   // v74: Prompt-App-Adapter. Wir überlassen buildPromptPlan das eigentliche Formulieren;
   // Routing, Seeds und Story bleiben hier. Wenn `model` nicht in der Prompt-App-Tabelle ist,
@@ -388,6 +410,10 @@ export async function buildImagePlan({ profile = {}, resolved = {}, card = null,
       parts: { ...parts },
       seed: Number.isInteger(body.seed) ? body.seed : undefined,
       wish: sceneReq,
+      style,
+      partner: allowed,
+      partnerNames,
+      portrait: userPortrait,
     },
   });
   if (promptPlan.error) return { error: { status: 403, code: promptPlan.error.code, message: promptPlan.error.message } };
@@ -409,15 +435,24 @@ export async function buildImagePlan({ profile = {}, resolved = {}, card = null,
   // Prompt + Negative der Prompt-App; einheitliche Default-Negatives und Anpassungen aus abgleich/strongNeg.
   let prompt = promptPlan.prompt;
   let negative = promptPlan.negative;
-  // Zusätzliche Generik aus dem Rest-Pipeline (Anatomie, Adult, cropped head, Solo) – dedupliziert, ≤1000
-  negative = mergeNegative(negative, [
+  const navDefault87 = !NAVEL_RX87.test(String(promptPlan.identity || '') + ' ' + String(appParts.outfit || ''));
+  // v87: Defaults ganz vorne (Venice kürzt bei 800), Solo-Begriffe nur ohne Partner
+  negative = mergeNegative([
+    NEG_DEFAULTS_FRONT,
+    navDefault87 ? NAVEL_NEG : '',
+    !allowed ? 'duplicate person, extra persons' : '',
+  ].filter(Boolean).join(', '), [
+    negative,
     NEG_ANATOMY,
     NEG_SINGLE,
-    'extra people, second person, man, crowd',
+    !allowed ? (maleSubject ? 'extra people, second person, woman, crowd' : 'extra people, second person, man, crowd') : '',
     'cropped head, cut off face, out of frame',
     adult && style !== 'comic' && style !== 'manhwa' ? NEG_ADULT_REAL : '',
+    style === 'comic' || style === 'manhwa' ? NEG_PHOTO87 : '',
     ...strongNeg.extra,
   ].filter(Boolean), 1000);
+  // v87: Negatives, die das positive Outfit/den Stil verbieten, entfernen (Nacktheit nur in hemmungslos)
+  negative = dropNegativeConflicts(negative, adult ? String(appParts.outfit || '') + ', ' + String(prompt).slice(0, 600) : String(prompt).slice(0, 300));
   // Bei Nicht-Prompt-App-Modellen Wrapping in alten Stil, damit Kompatibilität erhalten bleibt (prose)
   if (!PROMPTAPP_MODELS.has(route?.model || '')) {
     const wrapped = assemblePrompt(appParts, L2, {
@@ -447,3 +482,4 @@ export function mergeNegative(base, extra, max = 1000) {
   return scrubYouth(out).slice(0, max);
 }
 export { VARIATIONS, AGE_MSG };
+export { sparMixModel } from './imgsvc-core.js';

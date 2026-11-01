@@ -161,7 +161,7 @@ export function effectiveRefMode(refMode, L) { return normRefMode(refMode); }
 export function buildEditPrompt(scenePrompt, figur) {
   return `New photo – SCENE (follow it exactly): ${scenePrompt}. Outfit, pose, place, camera angle and lighting come ONLY from the scene, never from the reference image. IDENTITY: same person as in the reference image – preserve her exact face, facial features, eye colour and skin tone${figur ? ', and also her hairstyle, hair length, hair colour and body type / figure' : ', hairline and hair colour'}; do not change her identity. Clothing exactly as described in the scene, not from the reference image.`.slice(0, 1500);
 }
-const SHORT = { 'qwen-image-2-1-turbo-edit': 'qwen-edit', 'qwen-image-2-1-turbo': 'qwen-turbo', 'qwen-image-3': 'qwen-3', 'z-image-turbo': 'z-image', chroma: 'chroma' };
+const SHORT = { 'qwen-image-2-1-turbo-edit': 'qwen-edit', 'qwen-image-2-1-turbo': 'qwen-turbo', 'qwen-image-3': 'qwen-3', 'flux-2-pro': 'flux-pro', 'z-image-turbo': 'z-image', chroma: 'chroma' };
 export function shortModel(model, label) { return label && /Gesicht|Figur|Qualität|Mittel/.test(label) ? `${model} · ${label}` : model; }
 
 export function pickAngle(sc, rnd = Math.random) {
@@ -255,10 +255,10 @@ export const MODEL_TABLE = {
   auto: { label: 'Auto', safe: { model: 'z-image-turbo', cost: 0.01 }, adult: { model: 'chroma', cost: 0.01 } },
   spar: { label: 'Spar', safe: { model: 'z-image-turbo', cost: 0.01 }, adult: { model: 'chroma', cost: 0.01 } },
   mittel: { label: 'Mittel', safe: { model: 'qwen-image-2-1-turbo', cost: 0.02 }, adult: { model: 'chroma', cost: 0.01 } },
-  qualitaet: { label: 'Qualität', safe: { model: 'qwen-image-3', cost: 0.04 }, adult: { model: 'chroma', cost: 0.01 } },
+  qualitaet: { label: 'Qualität', safe: { model: 'flux-2-pro', cost: 0.03 }, adult: { model: 'chroma', cost: 0.01 } },
   mix: { label: 'Mix', safe: { model: 'z-image-turbo', cost: 0.03, mix: true }, adult: { model: 'chroma', cost: 0.01 } },
   lustify: { label: 'Lustify', safe: { model: 'lustify-v8', cost: 0.01 }, adult: { model: 'lustify-v8', cost: 0.01 } },
-  hq: { label: 'HQ', safe: { model: 'qwen-image-3', cost: 0.04 }, adult: { model: 'lustify-v8', cost: 0.01, steps: 50 } },
+  hq: { label: 'HQ', safe: { model: 'flux-2-pro', cost: 0.03 }, adult: { model: 'lustify-v8', cost: 0.01, steps: 50 } },
   refine: { label: 'Nachschliff', safe: { model: 'qwen-image-2-1-pro-edit', cost: 0.05, edit: { base: 'z-image-turbo', model: 'qwen-image-2-1-pro-edit' } }, adult: { model: 'qwen-edit-uncensored', cost: 0.05, edit: { base: 'chroma', model: 'qwen-edit-uncensored' } } },
   'refine-firered': { label: 'Nachschliff FireRed', safe: { model: 'firered-image-edit', cost: 0.04, edit: { base: 'z-image-turbo', model: 'firered-image-edit' } }, adult: { model: 'firered-image-edit', cost: 0.04, edit: { base: 'chroma', model: 'firered-image-edit' } } },
   krea: { label: 'Krea Premium', safe: { model: 'krea-v2-large', cost: 0.07 }, adult: { model: 'chroma', cost: 0.01 } },
@@ -281,6 +281,16 @@ export function routeModel({ style = 'real', adult = false, quality = 'spar', re
   if (!adult && (style === 'comic' || style === 'manhwa' || style === 'comicpage') && !e.edit && !e.mix) return { kind: 'gen', q, model: 'qwen-image-2-1-turbo', cost: 0.02, label: 'Comic', steps: undefined };
   if (e.edit || e.mix) return { kind: 'gen', q, model: e.model, cost: e.cost, label: MODEL_TABLE[q].label, steps: e.steps, edit: e.edit || null, mix: !!e.mix };
   return { kind: 'gen', q, model: e.model, cost: e.cost, label: MODEL_TABLE[q].label, steps: e.steps };
+}
+/** v87 Spar-Mix (nur adult): solo je Stufe z-image/qwen, mit Partner oder männlichem Profil chroma. */
+export function sparMixModel({ adult = false, quality = '', partner = false, male = false } = {}) {
+  if (!adult) return null;
+  const q = String(quality || '');
+  if (!['spar', 'mittel', 'qualitaet'].includes(q)) return null;
+  if (partner || male) return { model: 'chroma', cost: 0.01 };
+  if (q === 'spar') return { model: 'z-image-turbo', cost: 0.01 };
+  if (q === 'mittel') return { model: 'qwen-image-2-1-turbo', cost: 0.02 };
+  return { model: 'qwen-image-3', cost: 0.04 };
 }
 export function modelLabel(quality, adult = false) { const q = MODEL_TABLE[String(quality)] ? String(quality) : 'single'; return MODEL_TABLE[q][adult ? 'adult' : 'safe'].model; }
 
@@ -322,3 +332,5 @@ export const normQuality = (q) => (Object.prototype.hasOwnProperty.call(MODEL_TA
 // v68: Plan/Story/Seed/Prompt-Bau liegt in imgsvc-plan.js (ein Pfad), hier re-exportiert
 import { assemblePrompt as planAssemble } from './imgsvc-plan.js';
 export { buildImagePlan, ruleComposer, mergeStory, storyStep, emptyStory, assemblePrompt, compactIdentity, filterPeople, peopleAllowed, parseComposerJson, composerInput, COMPOSER_JSON_SYSTEM, sceneSeed, resolveSeed, hashStr, outfitPhrase, outfitNegative, noWeights, mergeNegative, fitPrompt, composerSystemFor } from './imgsvc-plan.js';
+export { specForRendered } from './promptapp/garments.js';
+export { dropNegativeConflicts, stripConflictingAge } from './promptapp/util.js';

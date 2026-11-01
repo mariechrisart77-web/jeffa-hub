@@ -99,6 +99,13 @@ export function classifyOutfit(text) {
 }
 
 /** Garment-Spec aus Preset-Objekt (aus photoopts) oder Freitext bauen */
+/** v87: Garment-Spec passend zum TATSÄCHLICH gerenderten Outfit (nude-Zustand → nude-Spec). */
+export function specForRendered(outfitText, state, presetId = '') {
+  const rendered = renderOutfitPhrase(outfitText, state);
+  if (/^nude, no clothes$/i.test(rendered)) return { ...GARMENT_SPECS.nude };
+  return specFor(outfitText, presetId);
+}
+
 export function specFor(outfitText, presetId = '') {
   if (!outfitText && !presetId) return null;
   if (presetId && GARMENT_SPECS[presetId]) return { ...GARMENT_SPECS[presetId] };
@@ -133,7 +140,9 @@ export function activeGarmentBits(spec) {
 export function renderOutfitPhrase(outfit, state) {
   const o = tidy(String(outfit || ''));
   const s = low(state);
-  if (/^(nude|naked)$/.test(s) || (!o && /^(nude|naked)$/.test(s))) return 'nude, no clothes';
+  const base = reconcileOutfitNudity(o);
+  if (/^(nude|naked|nude only)$/.test(s) || (s && base.removed.length && !base.text)) return 'nude, no clothes';
+  if (!o && /^(nude|naked)$/.test(s)) return 'nude, no clothes';
   if (!o) return '';
   if (/wet|nass|soak|damp/.test(s)) return `visibly soaking wet ${o} clinging to her skin, dark damp patches on the fabric, water droplets on her skin and hair`;
   if (/torn|zerriss/.test(s)) return `visibly torn ${o} with ripped fabric`;

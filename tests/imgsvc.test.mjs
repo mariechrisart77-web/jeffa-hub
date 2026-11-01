@@ -34,7 +34,7 @@ test('rule prompt: scene first, no text, negatives', () => {
   assert.match(buildRulePrompt(L, { style: 'comicpage' }).prompt, /^comic book page/);
 });
 test('routing and costs', () => {
-  assert.deepEqual([routeModel().cost, routeModel({ quality: 'mittel' }).model, routeModel({ quality: 'qualitaet' }).cost], [0.01, 'qwen-image-2-1-turbo', 0.04]);
+  assert.deepEqual([routeModel().cost, routeModel({ quality: 'mittel' }).model, routeModel({ quality: 'qualitaet' }).cost], [0.01, 'qwen-image-2-1-turbo', 0.03]); // v87: jugendfrei qualitaet → flux-2-pro $0.03
   assert.equal(routeModel({ refMode: 'full', hasRef: true }).kind, 'gen'); assert.equal(routeModel({ refMode: 'figur', hasRef: true, adult: true }).model, 'chroma'); // v68: Referenzbild nur noch als Look-Text (refLook), kein Edit-Routing mehr über refMode
   assert.equal(routeModel({ refMode: 'face', hasRef: false }).kind, 'gen');
   assert.equal(routeModel({ refMode: 'face', hasRef: true, style: 'comicpage' }).kind, 'gen');

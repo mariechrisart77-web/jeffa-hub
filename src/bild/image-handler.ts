@@ -8,6 +8,7 @@ import { loadStarRef } from "../imgsvc-db";
 import { trackUsage } from "../usage";
 // @ts-ignore plain JS helper
 import { storeGenerated } from "../r2img.js";
+import { sizeParamsFor } from "../venice-size.js";
 
 interface ImageBody {
   prompt: string;
@@ -66,7 +67,7 @@ export async function handleImage(ctx: EventContext<Env, any, any>): Promise<Res
       const res = await fetch("https://api.venice.ai/api/v1/image/generate", {
         method: "POST",
         headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-        body: JSON.stringify({ model, prompt: p.slice(0, model === "chroma" ? 3000 : 1500), negative_prompt: neg, ...(seed != null ? { seed } : {}), hide_watermark: true, width, height, format: "webp", ...(model.startsWith("lustify") ? { steps: steps || 30, cfg_scale: 5 } : {}), ...(safeMode ? { safe_mode: true } : { safe_mode: false }) }),
+        body: JSON.stringify({ model, prompt: p.slice(0, model === "chroma" ? 3000 : 1500), negative_prompt: neg, ...(seed != null ? { seed } : {}), hide_watermark: true, ...sizeParamsFor(model, width, height), format: "webp", ...(model.startsWith("lustify") ? { steps: steps || 30, cfg_scale: 5 } : {}), ...(safeMode ? { safe_mode: true } : { safe_mode: false }) }),
       });
       if (!res.ok) throw new Error(`Venice API ${res.status}: ${(await res.text()).slice(0, 200)}`);
       const data: any = await res.json();
@@ -93,7 +94,7 @@ export async function handleImage(ctx: EventContext<Env, any, any>): Promise<Res
       };
       if (body.style !== "comicpage" && !body.ref_profile && ["lustify", "hq", "krea", "refine", "refine-firered"].includes(q)) {
         if (q === "lustify" && !safeMode) return ok(await gen("lustify-v8", prompt, NEG), "lustify-v8", 0.01);
-        if (q === "hq") return safeMode ? ok(await gen("qwen-image-3", prompt, NEG), "qwen-image-3 (HQ)", 0.04) : ok(await gen("lustify-v8", prompt, NEG, 50), "lustify-v8 (HQ, 50 Schritte)", 0.01);
+        if (q === "hq") return safeMode ? ok(await gen("flux-2-pro", prompt, NEG), "flux-2-pro (HQ)", 0.03) /* v87: qwen-image-3 wird im Safe-Mode verpixelt */ : ok(await gen("lustify-v8", prompt, NEG, 50), "lustify-v8 (HQ, 50 Schritte)", 0.01);
         if (q === "krea" && safeMode) return ok(await gen("krea-v2-large", prompt, NEG), "krea-v2-large (Premium)", 0.07);
         if (q === "refine" || q === "refine-firered") {
           const base = !safeMode ? "chroma" : "z-image-turbo";
@@ -104,8 +105,8 @@ export async function handleImage(ctx: EventContext<Env, any, any>): Promise<Res
           catch (e) { console.error("refine failed", e); return ok(img, `${base} (Nachschliff fehlgeschlagen)`, 0.01); }
         }
       }
-      const model = !safeMode ? "chroma" /* v46 AP5: FSK18 always chroma */ : (body.model && ["qwen-image-2-1-turbo", "qwen-image-3", "chroma", "z-image-turbo"].includes(body.model) ? body.model : "") || (lustify ? "chroma" : comic && !safeMode ? "qwen-image-2-1-turbo" : "z-image-turbo");
-      const cost = model === "qwen-image-3" ? 0.04 : model === "qwen-image-2-1-turbo" ? 0.02 : 0.01;
+      const model = !safeMode ? "chroma" /* v46 AP5: FSK18 always chroma */ : (body.model === "qwen-image-3" ? "flux-2-pro" /* v87: alte Clients */ : body.model && ["qwen-image-2-1-turbo", "flux-2-pro", "chroma", "z-image-turbo"].includes(body.model) ? body.model : "") || (lustify ? "chroma" : comic && !safeMode ? "qwen-image-2-1-turbo" : "z-image-turbo");
+      const cost = model === "qwen-image-3" ? 0.04 : model === "flux-2-pro" ? 0.03 : model === "qwen-image-2-1-turbo" ? 0.02 : 0.01;
       let refAppend = "";
       // Face reference (admin/unlocked only): the active "Gesicht" image of the profile is used as identity source.
       if (body.ref_profile && /^[A-Za-z0-9_-]{1,64}$/.test(body.ref_profile) && context.env.DB && body.style !== "comicpage") {

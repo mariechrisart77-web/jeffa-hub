@@ -1,6 +1,6 @@
 // v74 Modell-bewusster Prompt-Bau. Reihenfolge (immer): Framing → Identität → Outfit → Pose → Action → Szene → Licht → Mood → Quality.
 // Framing + Identität + Outfit werden NIE gekürzt. Truncation schneidet Quality → Background → Mood zuerst.
-import { dedupeText, tidy } from './util.js';
+import { dedupeText, dropNegativeConflicts, tidy } from './util.js';
 import { subjectOf } from './identity.js';
 
 export const FRAMING = 'full body shot, entire face and head in frame, looking at camera';
@@ -12,13 +12,23 @@ export const FORMAT = {
   'qwen-image-3': { style: 'prose', maxPrompt: 1500, maxNegative: 800 },
   'qwen-image-2-1-turbo': { style: 'prose', maxPrompt: 1500, maxNegative: 800 },
   'z-image-turbo': { style: 'prose', maxPrompt: 1500, maxNegative: 800 },
+  'flux-2-pro': { style: 'prose', maxPrompt: 1500, maxNegative: 800 },
   default: { style: 'prose', maxPrompt: 1500, maxNegative: 800 },
 };
 export function formatOf(model) { return FORMAT[String(model || '').toLowerCase()] || FORMAT.default; }
 
 /** Anzeige-Label einer Section (nur im Prose-Stil genutzt) */
+/** v87: Stil-Texte (aus imgsvc-core dupliziert, um den Zirkelimport zu vermeiden) */
+export const STYLE_TEXT = {
+  real: 'photorealistic, natural light, sharp focus',
+  comic: 'western comic book art style, bold ink outlines, flat vibrant colors',
+  manhwa: 'Korean manhwa webtoon style, clean digital line art, soft cel shading, vibrant colors',
+  story: 'photorealistic photo, cinematic',
+};
 const SECTION_LABEL = {
   framing: 'Framing',
+  people: 'People',
+  style: 'Style',
   identity: 'The woman', // v78: wird von formatPrompt per subjectOf überschrieben, wenn male
   outfit: 'Outfit',
   pose: 'Camera and pose',
@@ -38,13 +48,15 @@ function listOf(v) {
 
 /** Sections in der festen Reihenfolge; `prio` wird für die Truncation genutzt (1 = geschützt). */
 export function buildSections(parts = {}) {
-  const { framing, identity, outfitText, garmentTags, pose, action, scene, light, mood, quality } = parts || {};
+  const { framing, identity, outfitText, garmentTags, pose, action, scene, light, mood, quality, styleText, people } = parts || {};
   const outfitParts = [...listOf(outfitText), ...listOf(garmentTags)];
   const rows = [
     { key: 'framing', text: listOf(framing).join(', '), prio: 1 },
+    { key: 'style', text: listOf(styleText).join(', '), prio: 1 },
     { key: 'identity', text: listOf(identity).join(', '), prio: 1 },
     { key: 'outfit', text: outfitParts.join(', '), prio: 1 },
     { key: 'pose', text: listOf(pose).join(', '), prio: 2 },
+    { key: 'people', text: listOf(people).join(', '), prio: 2 },
     { key: 'action', text: listOf(action).join(', '), prio: 3 },
     { key: 'scene', text: listOf(scene).join(', '), prio: 4 },
     { key: 'light', text: listOf(light).join(', '), prio: 4 },
@@ -112,7 +124,10 @@ export function formatPrompt(model, parts, opts = {}) {
   const cut = truncateSections(sections, fm.maxPrompt);
   const identityLabel = opts.profile ? subjectOf(opts.profile).label : SECTION_LABEL.identity;
   const text = fm.style === 'tags' ? renderTags(cut) : renderProse(cut, keys.slice(0, cut.length), { identityLabel });
-  const negative = dedupeText(listOf(opts.negative).join(', ')).slice(0, fm.maxNegative);
+  // v87: Negatives, die den positiven Stil negieren, entfernen (Comic-Stil darf nicht „cartoon“ negieren)
+  let negAll = dedupeText(listOf(opts.negative).join(', '));
+  if (parts && parts.styleText) negAll = dropNegativeConflicts(negAll, String(parts.styleText));
+  const negative = negAll.slice(0, opts.maxNegative || fm.maxNegative);
   return {
     prompt: text.slice(0, fm.maxPrompt),
     negative,

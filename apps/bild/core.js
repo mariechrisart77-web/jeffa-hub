@@ -70,7 +70,7 @@ export function buildBody(state) {
       prompt,
       style,
       adult: adult || false,
-      model: quality === 'auto' ? 'z-image-turbo' : { spar: 'z-image-turbo', mittel: 'qwen-image-2-1-turbo', qualitaet: 'qwen-image-3' }[quality] || 'z-image-turbo',
+      model: quality === 'auto' ? 'z-image-turbo' : { spar: 'z-image-turbo', mittel: 'qwen-image-2-1-turbo', qualitaet: 'flux-2-pro' }[quality] || 'z-image-turbo',
       width: dims[0],
       height: dims[1],
       seed: seed === 'zufall' ? undefined : seed

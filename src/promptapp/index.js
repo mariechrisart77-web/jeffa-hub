@@ -2,10 +2,10 @@ import { subjectOf } from './identity.js';
 // v74 Prompt-App: EIN reiner Prompt-Plan. `buildPromptPlan` liefert prompt/negative/parts/story/seed/checkSpec/identity.
 // Kein I/O, keine Seiteneffekte. Routing, Seeds (Policy), Storage bleiben in imgsvc-plan.js / imgsvc-image.ts.
 import { buildIdentity, collectDefaultOutfitSegs, resolveAge, FSK18_ID_RX, CLOTHING_RX } from './identity.js';
-import { classifyOutfit, specFor, activeGarmentBits, renderOutfitPhrase } from './garments.js';
-import { FORMAT, framingFor, formatPrompt, FRAMING } from './format.js';
+import { classifyOutfit, specFor, specForRendered, activeGarmentBits, renderOutfitPhrase } from './garments.js';
+import { FORMAT, framingFor, formatPrompt, FRAMING, STYLE_TEXT } from './format.js';
 import { makeCheckSpec } from './check-spec.js';
-import { dedupe, dedupeText, dropSegs, low, splitSegs, tidy } from './util.js';
+import { dedupe, dedupeText, dropSegs, dropNegativeConflicts, low, splitSegs, stripConflictingAge, tidy, truncateSegs } from './util.js';
 import { isExplicitAdult, isFsk18Segment, neutralPose, SFW_NEGATIVES, sfwText } from './sfw.js';
 import { storyScene, detectStoryPose, detectScene } from './scene-map.js';
 import { resolveSceneTarget, fitPoseToScene, poseExtras } from './consistency.js';
@@ -17,6 +17,34 @@ const AGE_MSG_DE = 'Profil muss eindeutig erwachsen sein (18+)';
 const NEG_BASE = 'bad anatomy, extra limbs, deformed hands, watermark, text, letters, logo, signature, lowres, blur, jpeg artifacts';
 const NEG_ANATOMY = 'extra hands, extra arms, extra legs, extra fingers, missing fingers, fused fingers, three hands';
 const NEG_SOLO = 'extra people, second person, man, crowd';
+// v87: feste Default-Negatives (ganz vorne, weil Venice bei 800 Zeichen abschneidet)
+export const NEG_DEFAULTS = 'broken hands, broken fingers, bad teeth, crooked teeth';
+export const NEG_NAVEL = 'navel piercing, belly button piercing';
+const SOLO_CLAUSE = 'duplicate person, extra persons';
+// v87: Komik-Handwerk statt Foto-Handwerk im Negativ
+const NEG_PHOTO = 'photorealistic, photo, photograph, realistic skin texture';
+const NAVEL_RX = /\bnavel|belly[- ]button|bauchnabel/i;
+/** Porträt-Erkennung (nur Nutzerquellen; Regex laut v87-Spez) */
+export const PORTRAIT_RX = /porträt|portrait|nahaufnahme|close-?up|kopf und schultern|head and shoulders|headshot|brustbild|gesicht in nahaufnahme/i;
+/** v87: positive Kurzform der wichtigsten Negatives (nur für Modelle ohne negative_prompt) */
+function positiveMirror({ navel = true } = {}) {
+  return ['natural hands with five fingers', 'natural even teeth', navel ? 'bare navel without jewelry' : ''].filter(Boolean).join(', ');
+}
+/** v87: kleine Oberweite – Segment aus der Identität lösen und hinter dem Alter einsortieren */
+const SMALL_BUST_RX = /\b(AA|A)-cup\b|\bsmall\b[^,]*\bbust\b|\bflat chest\b/i;
+export function amplifySmallBust(identity) {
+  const segs = splitSegs(identity);
+  const idx = segs.findIndex((s) => SMALL_BUST_RX.test(s));
+  if (idx < 0) return { identity, extra: [], navel: false };
+  const seg = segs[idx];
+  const curvy = segs.some((s) => /\b(curvy|hourglass)\b/i.test(s));
+  const full = seg + (curvy && !/\bcurves? in the hips/i.test(seg) ? ', curves in the hips and waist, not the bust' : '') + (/\bsmall breasts/i.test(seg) ? '' : ', small breasts, flat petite chest');
+  const rest = segs.slice(0, idx).concat(segs.slice(idx + 1));
+  const ageIdx = rest.findIndex((s) => /looks exactly \d+ years old/i.test(s));
+  const at = ageIdx < 0 ? 0 : ageIdx + 1;
+  const out = rest.slice(0, at).concat([full], rest.slice(at));
+  return { identity: out.join(', '), extra: ['large breasts', 'big breasts', 'busty', 'huge breasts'], navel: false };
+}
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o || {}, k);
 const str = (v) => (typeof v === 'string' ? tidy(v) : '');
@@ -225,6 +253,10 @@ function applySfwToParts(parts, scene = '', notes = [], opts = {}) {
  *  { prompt, negative, parts, story, seed, model, checkSpec, identity, abgleich, garment, quality }
  */
 export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {}, story = null, msgs = [], adult = false, model = 'chroma', quality = 'single', body = {} } = {}) {
+  const style = ['comic', 'manhwa', 'comicpage'].includes(String(body && body.style)) ? String(body.style) : 'real';
+  const partner = (body && body.partner) === true;
+  const portrait = (body && body.portrait) === true;
+  const partnerNames = Array.isArray(body && body.partnerNames) ? body.partnerNames.map(String).slice(0, 3) : [];
   const notes = [];
   const R = resolved || {};
   const ST = story || {};
@@ -234,6 +266,14 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
   for (const n of idBuilt.notes) notes.push(n);
   let identity = idBuilt.identity;
   const age = idBuilt.age;
+  // v87 Nebenbefund A: kleine Oberweite – nur bei adult; jugendfrei nur „slim petite figure“
+  let bustNeg = [];
+  if (adult) {
+    const amp = amplifySmallBust(identity);
+    if (amp.identity !== identity) { identity = amp.identity; bustNeg = amp.extra; }
+  } else if (/\b(AA|A)-cup\b|\bsmall\b[^,]*\bbust\b/i.test(identity) && !/\bpetite figure\b/i.test(identity)) {
+    identity = identity + ', slim petite figure';
+  }
 
   // 2. 18+-Block
   if (adult && !isAdultProfile(profile) && age < 18) {
@@ -305,7 +345,8 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
   // gespeicherte Dropdown-Pose (eine einmalige Pose-Auswahl photoOverride.pose gewinnt weiterhin).
   // Im Modus hemmungslos bleiben ortsunabhängige Details der Dropdown-Pose (z. B. „legs spread“) erhalten.
   const wishPose = wishScene ? detectStoryPose(wishScene) : null;
-  if (wishPose && !str((photoOverride || {}).pose) && low(str(parts.pose)) !== low(wishPose)) {
+  // v87: Porträt-Ausschnitt – keine Intensitäts-/Ganzkörper-Pose zurückschreiben
+  if (!portrait && wishPose && !str((photoOverride || {}).pose) && low(str(parts.pose)) !== low(wishPose)) {
     const extras = effectiveAdult ? poseExtras(str(parts.pose)) : [];
     parts.pose = [wishPose, ...extras].join(', ');
     notes.push(`Pose aus dem Bild-Wunsch übernommen („${wishPose}“)`);
@@ -319,12 +360,12 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
     }
   }
   // v75 (c): Story-Pose ersetzt gespeicherte/Preset-Pose auch bei 18+, solange das Dropdown keine Pose setzt
-  if (effectiveAdult && storyPose && !(hasOwn(ph, 'pose') && str(ph.pose)) && low(str(parts.pose)) !== low(storyPose)) {
+  if (!portrait && effectiveAdult && storyPose && !((hasOwn(ph, 'pose') && str(ph.pose))) && low(str(parts.pose)) !== low(storyPose)) {
     parts.pose = storyPose;
     notes.push(`Pose aus der Story übernommen („${storyPose}“)`);
   }
   // v83 (Aufgabe 3): Pose/Kleidung/Umgebung gegen die aufgelöste Szene abgleichen – in BEIDEN Modi.
-  {
+  if (!portrait) {
     const poseFit = fitPoseToScene({
       pose: str(parts.pose),
       action: str(parts.action),
@@ -335,6 +376,11 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
     if (poseFit.pose !== str(parts.pose)) parts.pose = poseFit.pose;
     if (poseFit.action !== str(parts.action)) parts.action = poseFit.action;
     for (const n of poseFit.notes) notes.push(n);
+  }
+  // v87: Porträt erzwingt Kopf-/Schulter-Pose; gespeicherte Dropdown-Pose wird verworfen
+  if (portrait) {
+    if (parts.pose && low(str(parts.pose)) !== low('head and shoulders, facing the camera')) notes.push(`Pose „${parts.pose}“ für Porträt-Ausschnitt weggelassen`);
+    parts.pose = 'head and shoulders, facing the camera';
   }
   // 7. Nicht-18+: FSK18-Details aus Identität/Parts entfernen
   if (!effectiveAdult) {
@@ -386,14 +432,18 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
   }
 
   // 8. Garment-Spec + aktive Bits (nur wenn aktiv)
-  const garment = specFor(parts.outfit);
+  const garment = specForRendered(parts.outfit, parts.outfit_state);
   const bits = activeGarmentBits(garment);
+  const nudeNow = !!garment && garment.kind === 'nude';
   // v83: Tags, die sinngleich schon im Outfit stehen, nicht doppelt anhängen
   const garmentTags = garment ? dedupeGarmentTags(bits.tags.slice(), parts.outfit) : [];
 
   // 9. Prompt bauen
   const framing = framingFor(parts.camera || '');
   const outfitText = renderOutfitPhrase(parts.outfit, parts.outfit_state);
+  // v87: Bikini-Oberteil nur, wenn das finale Outfit wirklich ein Bikini ist
+  const bikiniTop = !!garment && /bikini/i.test(String(garment.kind || '')) && !nudeNow && !/\b(bikini top|triangles on)\b/i.test(String(outfitText) + ' ' + garmentTags.join(' '));
+  if (bikiniTop) garmentTags.push('bikini top worn, both triangles on');
   // v75 (c): Story-Szene aus ALLEN Story-Texten; Dropdown-Szene gewinnt immer
   // v83: aufgelöste Szene hat Vorrang; ein roher Chat-Satz darf NICHT als Szene im Prompt landen.
   let sceneText = target.scene || [str(parts.scene), str(parts.background)].filter(Boolean).join(', ');
@@ -410,32 +460,69 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
   }
   // v75: kein "in the described scene"-Platzhalter
   if (/^in the described scene$/i.test(sceneText.trim())) sceneText = '';
+  // v87 Nebenbefund B: widersprüchliche Altersangaben aus Szene/Pose/Outfit … entfernen (Identitätszeile ausgenommen)
+  let ageRemoved = false;
+  const fixAge = (t) => { const c = stripConflictingAge(t, age); if (c !== tidy(String(t || ''))) ageRemoved = true; return c; };
+  for (const k of ['scene', 'action', 'pose', 'expression', 'outfit', 'background', 'lighting']) if (typeof parts[k] === 'string' && parts[k]) parts[k] = fixAge(parts[k]);
+  sceneText = fixAge(sceneText);
+  const outfitTextFinal = fixAge(outfitText);
+  if (ageRemoved) notes.push('Altersangabe aus der Szene entfernt (Profilalter gilt)');
+
+  const male = subjectOf(profile).sex === 'man';
+  const comicStyle = style === 'comic' || style === 'manhwa';
+  const styleText = comicStyle ? `${STYLE_TEXT[style]}, illustration, not a photo` : '';
+  const peopleLine = partner
+    ? `two adults in the scene: ${male ? 'the man' : 'the woman'} and ${partnerNames.length ? partnerNames[0] + ', an adult ' + (male ? 'woman' : 'man') : (male ? 'his adult female partner' : 'her adult male partner')}`
+    : '';
+  const navDefault = !NAVEL_RX.test(identity + ' ' + String(parts.outfit || ''));
+  // chroma/z-image-turbo ignorieren negative_prompt → wichtigste Negatives positiv formulieren
+  const noNegModel = model === 'chroma' || model === 'z-image-turbo';
+  const aloneLine = !partner && noNegModel ? (male ? 'he is alone in the picture' : 'she is alone in the picture') : '';
+  // jugendfrei: kein „bare navel“ (würde Bauchfreiheit nahelegen)
+  const mirror = noNegModel ? positiveMirror({ navel: navDefault && effectiveAdult }) : '';
+  // v87: Garment-Tags, die wörtlich schon im Outfit-Text stehen (z. B. „nude, no clothes“), nicht doppelt
+  { const have = new Set(splitSegs(outfitTextFinal).map((x) => low(x))); for (let i = garmentTags.length - 1; i >= 0; i--) { const segs = splitSegs(garmentTags[i]); if (segs.length && segs.every((x) => have.has(low(x)))) garmentTags.splice(i, 1); } }
+  const fmMax = (FORMAT[model] || FORMAT.default).maxNegative || 800;
   const formatOut = formatPrompt(model, {
     framing,
     identity,
-    outfitText,
+    styleText,
+    people: peopleLine,
+    outfitText: outfitTextFinal,
     garmentTags,
-    pose: str(parts.pose),
+    pose: [str(parts.pose), aloneLine, mirror].filter(Boolean).join(', '),
     action: str(parts.action),
     scene: sceneText,
     light: str(parts.lighting),
     mood: str(parts.expression),
-    quality: 'high detail, sharp focus, no text, no letters',
+    quality: comicStyle ? 'clean ink lines, high detail, no text, no letters, no speech bubbles' : 'high detail, sharp focus, no text, no letters',
   }, {
+    // Reihenfolge = Priorität (Venice kürzt bei 800): Defaults → Solo → Garment → Brust → Rest
     negative: [
+      NEG_DEFAULTS,
+      navDefault ? NEG_NAVEL : '',
+      !partner ? SOLO_CLAUSE : '',
+      !effectiveAdult ? SFW_NEGATIVES : '',
+      bits.negatives.join(', '),
+      bustNeg.join(', '),
       NEG_BASE,
       NEG_ANATOMY,
-      bits.negatives.join(', '),
-      subjectOf(profile).noun === 'man' ? 'extra people, second person, woman, crowd, duplicate man' : NEG_SOLO,
+      !partner ? (male ? 'extra people, second person, woman, crowd, duplicate man' : NEG_SOLO) : '',
+      comicStyle ? NEG_PHOTO : '',
       'cropped head, cut off face, out of frame',
     ].filter(Boolean).join(', '),
+    maxNegative: 4000,
     profile,
   });
 
   // v75: SFW-Negatives für nicht-adulte Profile (v83: NUR wenn effectiveAdult === false – hemmungslos bleibt ungefiltert)
-  const finalNegative = effectiveAdult
-    ? formatOut.negative
-    : [formatOut.negative, SFW_NEGATIVES].filter(Boolean).join(', ');
+  // v87: SFW-Negatives stehen jetzt früh in der Liste (oben), damit die 800-Zeichen-Kürzung sie nicht abschneidet
+  let finalNegative = formatOut.negative;
+  // v87: Negatives, die das positive Outfit/den Stil verbieten, entfernen (nackt ↔ nude, Comic ↔ cartoon)
+  // Jugendschutz: in jugendfrei nur der Stil-Abgleich, die Nacktheits-Negatives bleiben immer stehen
+  finalNegative = dropNegativeConflicts(dedupeText(finalNegative), effectiveAdult ? [outfitTextFinal, garmentTags.join(', '), styleText].join(', ') : styleText);
+  finalNegative = truncateSegs(finalNegative, fmMax);
+  const promptFixed = formatOut.prompt;
 
   // v83: Story-Ort auf die aufgelöste Szene aktualisieren (wird in KV gespeichert).
   const storyOut = story ? { ...story } : { ...story };
@@ -451,7 +538,7 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
   const checkSpec = makeCheckSpec({ framing, garment, sceneText });
 
   return {
-    prompt: formatOut.prompt,
+    prompt: promptFixed,
     negative: finalNegative,
     parts: { ...parts, story: undefined },
     story: (target.location || target.scene) ? storyOut : (story || null),

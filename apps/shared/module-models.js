@@ -12,7 +12,7 @@ export const MODULES = [
 ];
 
 export const IMAGE_MODULE_MODELS = {
-  normal: ['z-image-turbo', 'qwen-image-2-1-turbo', 'qwen-image-3'],
+  normal: ['z-image-turbo', 'qwen-image-2-1-turbo', 'flux-2-pro'],
   adult: ['chroma', 'lustify-v8', 'z-image-turbo'],
 };
 
