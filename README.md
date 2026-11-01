@@ -273,3 +273,4 @@ Proprietär
 - v78: Modus-Schalter, Figur-Modul, Prüfung/Retry, Bildkontext, Knappheit-Labels, Latex-Bikini-Merge, gestufte Regler-Begriffe, Kleidungsstil-Prompts, kostenlos-zuerst-Modelle.
 - v79: Knappheit 10 „Brustwarzen und Klitoris nicht mal mehr ganz verdeckt“ (nur 18+); Freigabe nur für Anbieter ohne eigenen Key; Venice/Gemini normal in der Kette mit Preisangabe; Gemini oben (SFW) / unten (18+).
 - v80: Groq-Key als Secret (hub/chat), Groq = eigener Key (gpt-oss-120b/20b, qwen3.8-27b) in Ketten, Tresor-„Hinzufügen“-Absturz auf iPhone behoben (fehlendes `.view-inner`-Root).
+<!-- KI-Zugang Test -->
