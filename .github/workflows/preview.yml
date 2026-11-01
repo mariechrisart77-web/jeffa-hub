@@ -18,7 +18,8 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm test --if-present
-      - run: printf 'export const BUILD = { commit: "%s", version: "preview" };\n' "$(git rev-parse --short HEAD)" > src/build-info.ts
+      - run: |
+          printf 'export const BUILD = { commit: "%s", version: "preview" };\n' "$(git rev-parse --short HEAD)" > src/build-info.ts
       - run: node scripts/build.mjs
       - name: Deploy hub preview (never production)
         run: |
