@@ -2,7 +2,9 @@ name: preview
 on:
   push:
     branches-ignore: [main]
-concurrency: { group: preview-${{ github.ref_name }}, cancel-in-progress: true }
+concurrency:
+  group: preview-${{ github.ref_name }}
+  cancel-in-progress: true
 jobs:
   preview:
     runs-on: ubuntu-latest
