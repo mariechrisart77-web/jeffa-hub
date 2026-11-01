@@ -1,0 +1,91 @@
+# Übergabe Jeffa-Hub – für jede KI, jeden Bot, jeden Menschen
+Stand: 01.11.2026. Lies diese Datei ganz, bevor du irgendetwas tust.
+
+## 1. Wer und warum
+Marie (und Christian) sind finanziell knapp. Zeit, Token und Geld sind knapp. Sie brauchen Hilfe, die wirkt, und zwar effizient. Marie will wenig erklären müssen: Lies zuerst die Dateien, frag nur, was dort nicht steht, und dann kurz.
+
+## 2. Die App, wie sie sein SOLL
+Jeffa-Hub ist ein Hub, in dem alles gleich wichtig ist:
+- **Geld verdienen:** Content, Shop, Kunden (auch kreative/Erwachsenen-Inhalte, nur mit fiktiven Erwachsenen).
+- **Alltag und Behörden** organisieren.
+- **KI-Werkzeuge** an einem Ort.
+Dazu muss sie **zuverlässig, übersichtlich und günstig im Verbrauch** sein und **offen dafür, dass andere KIs grundlegend am Code mitarbeiten**.
+
+## 3. Die App, wie sie WURDE (ehrliche Einschätzung)
+Es ist eine installierbare Web-App auf Cloudflare Pages (Functions, D1, KV, R2). Live ist **v86**, **v87** liegt in der Vorschau bzw. auf dem Branch `v87-work`.
+Quelle: eine automatische Code-Analyse mit gekürzten Dateien. „Vermutet" heißt: Das wurde nicht im laufenden Betrieb getestet.
+
+| Teil | Reifegrad |
+|---|---|
+| Hub (Rahmen, Tabs, Offline, Push) | fertig |
+| Chat mit KI-Profilen, Profile, „Ich" | weitgehend fertig (vermutet, viele Tests) |
+| Bild-App | Kernpfad fertig, hängt an Anbieter-Schlüsseln |
+| Wächter (Status, Verbrauch, Guthaben) | zeigt nur an, steuert nichts |
+| Tresor, Einstellungen | fertig (vermutet), viele Abhängigkeiten |
+| Bot-Kanal (verschlüsselt), Comic | funktional, Reifegrad unsicher |
+| Kollab (Team aus KIs, „an Claude senden") | im Aufbau. Liefert nur Vorschläge, spielt keinen Code ein |
+| `/api/orchestrate`, GPU-Steuerung, `/api/models` | Platzhalter oder fehlen |
+
+Ehrlich gesagt: Die App ist sehr breit gebaut, aber nicht verlässlich. Für Geld verdienen und Alltag/Behörden gibt es **so gut wie nichts**. Teile des Modellkatalogs sind möglicherweise veraltet oder fiktiv. Achtung beim Prüfen: Die Seite antwortet auf **jeden** Pfad mit Status 200. Ein „erreichbar" beweist also nichts.
+
+## 4. Was schiefgelaufen ist
+- Fixes wurden **angekündigt statt gelöst**, im nächsten Update war der Fehler noch da.
+- Es wurde **dasselbe wiederholt**, statt den Lösungsweg zu wechseln.
+- **Ausgelagerte Aufgaben** wurden doch wieder selbst gemacht, statt im Team zu arbeiten.
+- Zwischen den Bots wurden **viele Token verschwendet**.
+- Es wurden **Probleme vorgeschoben**, statt ehrlich zu sagen, was nicht geht.
+- Riskante, aber mögliche Optionen wurden verschwiegen, statt sie mit Warnung anzubieten.
+Folge: Marie hat zu viel Geld, Zeit und Nerven investiert, und das Ergebnis war zu klein.
+
+## 5. Arbeitsregeln (für jeden Nachfolger, ohne Ausnahme)
+1. **Kleine Aufträge.** Jeder Auftrag endet mit einem prüfbaren Test („erledigt, wenn X live/in der Vorschau klappt").
+2. **„Erledigt" nur melden, wenn es geprüft ist**, in der Vorschau oder live. Nie „sollte jetzt gehen".
+3. **Nach 2 Fehlversuchen stoppen.** Dann den echten Grund in einem Satz nennen und einen machbaren Weg vorschlagen.
+4. **Keine erfundenen oder vorgeschobenen Probleme.** Was du nicht weißt, kennzeichnest du als unsicher.
+5. **Kein Alleingang („Ego-Tour").** Aufgaben, die anderen zugewiesen oder ausgelagert sind, reißt du nicht an dich.
+6. **Riskante Optionen nicht verschweigen**, sondern mit kurzer Warnung anbieten. Marie entscheidet.
+7. **Entscheidungen trifft Marie**, über kurze Auswahlfragen (A/B/C) statt langer Texte.
+8. **Wissen in Dateien festhalten** (siehe Punkt 9), statt es jedes Mal neu zu erkunden.
+9. **Produktion (`main`, Live-Deploy) nur nach Maries OK.** Ebenso gilt: Geld ausgeben, löschen oder senden nur mit OK.
+10. **Keine Schlüssel, PINs oder Passwörter** ausgeben oder in Dateien bzw. ins Repo schreiben.
+11. Jugendschutz-Filter bleiben. Erwachsenen-Inhalte nur mit fiktiven Erwachsenen, nie mit echten Gesichtern.
+
+## 6. Technischer Zugang
+- **Repo (privat):** https://github.com/mariechrisart77-web/jeffa-hub
+  `main` = live (v86), `v87-work` = aktueller Stand. **Gearbeitet wird nur auf eigenen Branches**, nie direkt auf `main` pushen.
+- **Hosting:** Cloudflare Pages. **Hub und Bild-Dienst werden immer zusammen** deployt.
+- **Vorschau pro Branch:** `https://<branch>.jeffa-hub.pages.dev` und `https://<branch>.jeffa-bild.pages.dev` (+ `/api/health`).
+  Das läuft automatisch per GitHub Action (`.github/workflows/preview.yml`), sobald Marie die Freigabe erteilt hat. Bis dahin per Skript `scripts/deploy.sh` mit Vorschau-Branch. **Achtung:** Standardmäßig deployt das Skript auf Produktion.
+- **Prüfen:** `node scripts/build.mjs`, dann `node --test tests/*.test.mjs`.
+- **Schlüssel** liegen nur als Secrets in Cloudflare/GitHub bzw. im Tresor der App. Prüfe nur, ob sie „gesetzt" sind, und lies nie die Werte.
+
+## 7. Grok Bots: Stärken, Schwächen, Möglichkeiten
+**Stärken:** Sie haben einen eigenen, dauerhaften Linux-Rechner, den alle Bots teilen (Dateien, Logins bleiben erhalten). Dazu kommen Browser und Desktop, eine Shell und Verbindungen zu GitHub, Gmail, Drive, Slack u. a. Sie arbeiten im Hintergrund, können Routinen (Zeitpläne) ausführen, es gibt mehrere spezialisierte Bots, und sie können externe KIs per API einbinden.
+**Schwächen:** Das gemeinsame Wochenlimit ist knapp und schnell verbraucht, vor allem durch lange Selbstarbeit, Wiederholungen und Bot-zu-Bot-Kommunikation. Bots neigen dazu, Arbeit selbst zu machen, statt sie günstig auszulagern. Logins und Verbindungen laufen ab. Ein neuer Bot kennt den Verlauf nicht, wenn er nicht in Dateien steht.
+**Möglichkeiten:** Schwere Lese- und Schreibarbeit an günstige externe Modelle per API auslagern:
+- Modell mit großem Kontext für Analysen,
+- günstiges Coding-Modell für die Umsetzung,
+- starkes Modell nur für schwere Entscheidungen.
+Grok Bots arbeiten dann als **Planer und Prüfer**, nicht als Hauptarbeiter.
+
+## 8. Was du für Marie tun sollst
+1. **Die App zuverlässig machen:** echte Fixes mit Test, keine Ankündigungen.
+2. **Fehlende Funktionen in kleinen Schritten** ergänzen (Geld verdienen, Alltag/Behörden, KI-Werkzeuge).
+3. **Den Verbrauch senken**, bei den Kosten der App und bei deiner eigenen Arbeitsweise.
+4. **Im Team arbeiten:** Aufträge aus `/workspace/jeffa-plan/AUFTRAEGE.md` bzw. vom Projektleiter-Bot „App-Abgleich Sparsam" annehmen und Ergebnisse dorthin zurückmelden.
+5. **Marie kurz und ehrlich informieren:** Was ist erledigt (geprüft), was nicht, warum, und welche Entscheidung brauchst du von ihr?
+
+## 9. Ablageorte
+- `/workspace/STATUS.md`: aktueller Gesamtstand
+- `/workspace/jeffa-plan/`: Plan, Wünsche (`WUENSCHE.md`), App-Beschreibung, Aufträge (`AUFTRAEGE.md`), diese Übergabe
+- `/workspace/jeffa-hub/KI-ZUGANG.md`: Kurzregeln für den Repo-Zugang
+
+## Maries Wunsch zu Vorsichtsmaßnahmen (01.11.2026)
+Marie arbeitet aus einer für sie sicheren Umgebung. Sie möchte keine unnötigen Vorsichtsmaßnahmen aufgezwungen bekommen: einfache Codes, Links und Infos direkt geben, statt Umwege zu bauen; riskante Optionen nicht verschweigen, sondern mit kurzer Warnung anbieten und sie entscheiden lassen. Wo eine Plattform eine Regel fest vorgibt, das in einem Satz ehrlich sagen und sofort den einfachsten Weg nehmen.
+
+## Stand 01.11.2026
+- Code im privaten GitHub-Repo: https://github.com/mariechrisart77-web/jeffa-hub
+- main = Live v86 (6b2c27f), v87-work = aktueller Arbeitsstand; externe KIs arbeiten nur auf eigenen Branches.
+- Vorschau-Automatik: .github/workflows/preview.yml (Push auf jeden Branch außer main → npm ci, Tests, Build, Vorschau-Deploy jeffa-hub + jeffa-bild). Stand: Lauf rot, `npm test` schlägt fehl (u. a. AP1–AP3: costOf, parseScript, bubbleGeom), dadurch noch kein Vorschau-Deploy.
+- Abnahmetest-Branch: test-ki-zugang (Ziel: https://test-ki-zugang.jeffa-hub.pages.dev + /api/health).
+- Produktion nur nach Maries OK (Merge nach main + deploy-Skript). Regeln: docs/KI-ZUGANG.md.
