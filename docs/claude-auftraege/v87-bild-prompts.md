@@ -106,3 +106,9 @@ Bestehende Tests nur anpassen, wenn das Verhalten hier bewusst geändert wird (q
 - Selbst ergänzt (Claude ließ es offen): sizeParamsFor in genOne (Hub) und gen (Bild-App), Bild-App HQ/Modellliste jugendfrei → flux-2-pro, UI-Texte (look.js, photoopts.js, settings.js, bild/core.js, module-models.js, site-apply.js), Kurzlabel flux-pro.
 - Tests: tests/v87-bild-prompts.test.mjs (12 Tests; Claudes Tests 1/4/6/8 korrigiert), angepasst: imgsvc.test (qualitaet-Kosten 0.03), v42 + v68-prompt (safe qualitaet/hq → flux-2-pro). Gesamt 405/405 grün, tsc grün.
 - Nicht geändert (Vorgabe): v73-Regel Wunsch-Outfit/Pose vs. gespeichertes Dropdown.
+
+## v87b (ohne Claude, 01.11.2026)
+- Marie-Entscheidung zur v73-Regel: Im Bild-Wunsch ausdrücklich genanntes Outfit / genannte Haltung ersetzt die gespeicherte Dropdown-Kleidung/-Pose komplett (alle Modi). Einmalige Auswahl für genau dieses Bild (photoOverride) gilt weiter. Jugendschutz danach unverändert. Porträt-Regel gewinnt für Ausschnitt/Pose. Neu: src/promptapp/wish.js (wishOutfitText, wishPoseText, condenseOutfit).
+- Solo: Auswahl nennt selbst „nude“ → kein nude/topless/bare breasts im Negativ, kein erzwungenes „bikini top worn“.
+- Länge: Outfit auf ganze Segmente gekürzt (≤250, chroma ≤450; Porträt ohne Unterkörper), neue Reihenfolge Framing → Stil → Personen → Identität → Szene → Outfit → Pose …, Kürzung nur ganzer Segmente, Labels bleiben korrekt.
+- Tests: tests/v87b-wunsch.test.mjs (8).

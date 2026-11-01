@@ -10,6 +10,7 @@ import { isExplicitAdult, isFsk18Segment, neutralPose, SFW_NEGATIVES, sfwText } 
 import { storyScene, detectStoryPose, detectScene } from './scene-map.js';
 import { resolveSceneTarget, fitPoseToScene, poseExtras } from './consistency.js';
 import { reconcileOutfitNudity, dedupeGarmentTags } from './garments.js';
+import { wishPoseText, condenseOutfit } from './wish.js';
 
 const AGE_MSG_DE = 'Profil muss eindeutig erwachsen sein (18+)';
 
@@ -344,7 +345,8 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
   // v83 (Aufgabe 2/3): Nennt die Wunsch-Szene eine Haltung („sie steht …“, „sie sitzt im Sand“), schlägt sie die
   // gespeicherte Dropdown-Pose (eine einmalige Pose-Auswahl photoOverride.pose gewinnt weiterhin).
   // Im Modus hemmungslos bleiben ortsunabhängige Details der Dropdown-Pose (z. B. „legs spread“) erhalten.
-  const wishPose = wishScene ? detectStoryPose(wishScene) : null;
+  // v87b: auch allgemeine Haltungen („sie kniet“) zählen als Wunsch-Pose
+  const wishPose = wishScene ? (wishPoseText(wishScene) || null) : null;
   // v87: Porträt-Ausschnitt – keine Intensitäts-/Ganzkörper-Pose zurückschreiben
   if (!portrait && wishPose && !str((photoOverride || {}).pose) && low(str(parts.pose)) !== low(wishPose)) {
     const extras = effectiveAdult ? poseExtras(str(parts.pose)) : [];
@@ -352,6 +354,9 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
     notes.push(`Pose aus dem Bild-Wunsch übernommen („${wishPose}“)`);
   }
   // v83: „nude“ + Kleidungsstück im selben Outfit → Kleidungsstück gilt (beide Modi)
+  // v87b: nennt die gewählte Kleidung selbst Nacktheit (z. B. „nude, … micro bikini“), darf das Negativ „nude/topless“
+  //   nicht verbieten und kein „bikini top worn“ erzwungen werden (Widerspruch zur eigenen Auswahl) – nur hemmungslos.
+  const outfitNamesNude = effectiveAdult && /\b(nude|naked|nackt|topless|oben ohne)\b/i.test(str(parts.outfit));
   {
     const nr = reconcileOutfitNudity(str(parts.outfit));
     if (nr.removed.length) {
@@ -360,7 +365,7 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
     }
   }
   // v75 (c): Story-Pose ersetzt gespeicherte/Preset-Pose auch bei 18+, solange das Dropdown keine Pose setzt
-  if (!portrait && effectiveAdult && storyPose && !((hasOwn(ph, 'pose') && str(ph.pose))) && low(str(parts.pose)) !== low(storyPose)) {
+  if (!portrait && effectiveAdult && storyPose && !wishPose && !((hasOwn(ph, 'pose') && str(ph.pose))) && low(str(parts.pose)) !== low(storyPose)) {
     parts.pose = storyPose;
     notes.push(`Pose aus der Story übernommen („${storyPose}“)`);
   }
@@ -387,7 +392,7 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
     // v75 (a)/(c): Story-Pose (falls vorhanden) ersetzt gespeicherte FSK18-/Preset-Pose; sonst Story-Ort schlägt Bett-Pose
     const poseText = String(parts.pose || '');
     const poseSpeaksBed = /\bbed\b|schlafzimmer|bedroom|bett/i.test(poseText);
-    if (storyPose) {
+    if (storyPose && !wishPose) {
       if (low(poseText) !== low(storyPose)) {
         parts.pose = storyPose;
         notes.push(`Pose aus der Story übernommen („${storyPose}“)`);
@@ -431,18 +436,32 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
     }
   }
 
+  // v87b: lange Outfit-Texte (gespeicherte Auswahl ~700 Zeichen) auf ganze Segmente kürzen – Kleidungsstücke zuerst;
+  //   Porträt: Unterkörper-Details weg. Damit passen Szene/Stil/Personen/Identität sicher in das Prompt-Limit.
+  {
+    const maxP = ((FORMAT[model] || FORMAT.default).maxPrompt) || 1500;
+    const co = condenseOutfit(str(parts.outfit), { max: maxP >= 3000 ? 450 : 250, portrait });
+    if (co.text && co.text !== str(parts.outfit)) {
+      parts.outfit = co.text;
+      notes.push(portrait ? 'Outfit für den Porträt-Ausschnitt gekürzt (Unterkörper-Details weggelassen)' : 'Langer Outfit-Text gekürzt (Kleidungsstücke behalten)');
+    }
+  }
   // 8. Garment-Spec + aktive Bits (nur wenn aktiv)
   const garment = specForRendered(parts.outfit, parts.outfit_state);
   const bits = activeGarmentBits(garment);
   const nudeNow = !!garment && garment.kind === 'nude';
   // v83: Tags, die sinngleich schon im Outfit stehen, nicht doppelt anhängen
   const garmentTags = garment ? dedupeGarmentTags(bits.tags.slice(), parts.outfit) : [];
+  // v87b: Auswahl nennt selbst Nacktheit → kein erzwungenes Bikini-Oberteil; Porträt → keine Unterkörper-Tags
+  for (let i = garmentTags.length - 1; i >= 0; i--) {
+    if ((outfitNamesNude && /bikini top worn|triangles on/i.test(garmentTags[i])) || (portrait && /\b(bottom|thong|cameltoe|labia|string bottom)\b/i.test(garmentTags[i]))) garmentTags.splice(i, 1);
+  }
 
   // 9. Prompt bauen
   const framing = framingFor(parts.camera || '');
   const outfitText = renderOutfitPhrase(parts.outfit, parts.outfit_state);
   // v87: Bikini-Oberteil nur, wenn das finale Outfit wirklich ein Bikini ist
-  const bikiniTop = !!garment && /bikini/i.test(String(garment.kind || '')) && !nudeNow && !/\b(bikini top|triangles on)\b/i.test(String(outfitText) + ' ' + garmentTags.join(' '));
+  const bikiniTop = !!garment && /bikini/i.test(String(garment.kind || '')) && !nudeNow && !outfitNamesNude && !/\b(bikini top|triangles on)\b/i.test(String(outfitText) + ' ' + garmentTags.join(' '));
   if (bikiniTop) garmentTags.push('bikini top worn, both triangles on');
   // v75 (c): Story-Szene aus ALLEN Story-Texten; Dropdown-Szene gewinnt immer
   // v83: aufgelöste Szene hat Vorrang; ein roher Chat-Satz darf NICHT als Szene im Prompt landen.
@@ -503,7 +522,7 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
       navDefault ? NEG_NAVEL : '',
       !partner ? SOLO_CLAUSE : '',
       !effectiveAdult ? SFW_NEGATIVES : '',
-      bits.negatives.join(', '),
+      (outfitNamesNude ? bits.negatives.filter((x) => !/\b(nude|naked|topless|bare breasts?|nipples?)\b/i.test(x)) : bits.negatives).join(', '),
       bustNeg.join(', '),
       NEG_BASE,
       NEG_ANATOMY,
@@ -520,7 +539,7 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
   let finalNegative = formatOut.negative;
   // v87: Negatives, die das positive Outfit/den Stil verbieten, entfernen (nackt ↔ nude, Comic ↔ cartoon)
   // Jugendschutz: in jugendfrei nur der Stil-Abgleich, die Nacktheits-Negatives bleiben immer stehen
-  finalNegative = dropNegativeConflicts(dedupeText(finalNegative), effectiveAdult ? [outfitTextFinal, garmentTags.join(', '), styleText].join(', ') : styleText);
+  finalNegative = dropNegativeConflicts(dedupeText(finalNegative), effectiveAdult ? [outfitTextFinal, garmentTags.join(', '), styleText, outfitNamesNude ? 'nude, topless' : ''].join(', ') : styleText);
   finalNegative = truncateSegs(finalNegative, fmMax);
   const promptFixed = formatOut.prompt;
 
@@ -550,6 +569,7 @@ export function buildPromptPlan({ profile = {}, resolved = {}, photoOverride = {
     identity,
     abgleich: dedupe(notes),
     adult: effectiveAdult,
+    outfitNamesNude,
   };
 }
 

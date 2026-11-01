@@ -10,6 +10,7 @@ import { buildPromptPlan, PORTRAIT_RX } from './promptapp/index.js';
 import { dropNegativeConflicts } from './promptapp/util.js';
 import { sparMixModel } from './imgsvc-core.js';
 import { subjectOf } from './promptapp/identity.js';
+import { wishOutfitText, wishPoseText } from './promptapp/wish.js';
 function stripPortraitWords(t) {
   return String(t || '').replace(/\b(close-?up|portrait|headshot|head and shoulders|kopf und schultern|nahaufnahme|brustbild)\b/gi, '').replace(/\s{2,}/g, ' ').replace(/\s+([,.])/g, '$1').replace(/^[\s,]+|[\s,]+$/g, '').trim();
 }
@@ -284,6 +285,25 @@ export async function buildImagePlan({ profile = {}, resolved = {}, card = null,
   const msgs0 = (Array.isArray(bc.messages) ? bc.messages : []).filter((m) => m && m.content && !m.generated).slice(-6);
   const msgs = msgs0.map((m, i) => ({ role: String(m.role || 'user'), content: scrubYouth(String(m.content)).slice(0, i === msgs0.length - 1 ? 1800 : 700) }));
   const sceneReq = scrubYouth(String(bc.scene || '')).slice(0, 400);
+  const sceneReq0 = sceneReq;
+  // v87b (Marie, v73-Regel neu): ausdrücklich im Bild-Wunsch genanntes Outfit / genannte Haltung ERSETZT die gespeicherte
+  //   Dropdown-Auswahl komplett (alle Modi). Eine einmalige Auswahl für genau dieses Bild (photoOverride) gilt weiterhin.
+  //   Jugendschutz läuft danach unverändert (guardAdult/SFW-Filter ersetzen freizügige Wunsch-Kleidung in jugendfrei).
+  const wishNotes87b = [];
+  {
+    const poObj = po && typeof po === 'object' && !Array.isArray(po) ? po : {};
+    const wOut = wishOutfitText(sceneReq0);
+    const wPose = wishPoseText(sceneReq0);
+    const ph0 = res.photo || {};
+    if (wOut && !(typeof poObj.outfit === 'string' && poObj.outfit.trim())) {
+      if (String(ph0.outfit || '').trim() && low70(ph0.outfit) !== low70(wOut)) wishNotes87b.push(`Kleidung aus dem Bild-Wunsch („${wOut}“) ersetzt die gespeicherte Auswahl`);
+      res = { ...res, photo: { ...ph0, outfit: wOut, neg_outfit: '' }, defaults: { ...(res.defaults || {}), outfit: undefined } };
+    }
+    if (wPose && !(typeof poObj.pose === 'string' && poObj.pose.trim())) {
+      if (String(ph0.pose || '').trim() && low70(ph0.pose) !== low70(wPose)) wishNotes87b.push(`Pose aus dem Bild-Wunsch („${wPose}“) ersetzt die gespeicherte Pose`);
+      res = { ...res, photo: { ...(res.photo || {}), pose: wPose, neg_pose: '' }, defaults: { ...(res.defaults || {}), pose: undefined } };
+    }
+  }
   const L0 = resolveLayers({ profile, resolved: res, card, scene: sceneReq, context: { summary: String(bc.summary || '').slice(0, 800), messages: msgs }, corrections });
   const L = { ...L0, ...useScene(L0, msgs[msgs.length - 1]?.content || sceneReq), vibe: vibeCues(String(profile.traits || '')) };
   // v83: Wenn die Wunsch-Szene einen Ort nennt, gespeicherten setting:-Fixtext ausblenden (Foto-Override gilt immer).
@@ -423,7 +443,7 @@ export async function buildImagePlan({ profile = {}, resolved = {}, card = null,
   // v83: EIN Alters-Hinweis – meldet die Prompt-App (Einstellungsfeld-Priorität) schon einen, entfällt der doppelte aus abgleich()
   const ppAge83 = (promptPlan.abgleich || []).some((w) => /^Alter widersprüchlich/.test(w));
   const abWarn83 = (ab.warnings || []).filter((w) => !(ppAge83 && /^Alter widersprüchlich/.test(w)));
-  const abgleichMerged = Array.from(new Set([...abWarn83, ...(promptPlan.abgleich || [])]));
+  const abgleichMerged = Array.from(new Set([...wishNotes87b, ...abWarn83, ...(promptPlan.abgleich || [])]));
   const appParts = { ...parts, ...(promptPlan.parts || {}) };
 
   // Variation: automatische Pose bleibt variabel; Dropdown-Pose → nur Linse
@@ -452,7 +472,7 @@ export async function buildImagePlan({ profile = {}, resolved = {}, card = null,
     ...strongNeg.extra,
   ].filter(Boolean), 1000);
   // v87: Negatives, die das positive Outfit/den Stil verbieten, entfernen (Nacktheit nur in hemmungslos)
-  negative = dropNegativeConflicts(negative, adult ? String(appParts.outfit || '') + ', ' + String(prompt).slice(0, 600) : String(prompt).slice(0, 300));
+  negative = dropNegativeConflicts(negative, adult ? String(appParts.outfit || '') + ', ' + String(prompt).slice(0, 600) + (promptPlan.outfitNamesNude ? ', nude, topless' : '') : String(prompt).slice(0, 300));
   // Bei Nicht-Prompt-App-Modellen Wrapping in alten Stil, damit Kompatibilität erhalten bleibt (prose)
   if (!PROMPTAPP_MODELS.has(route?.model || '')) {
     const wrapped = assemblePrompt(appParts, L2, {
