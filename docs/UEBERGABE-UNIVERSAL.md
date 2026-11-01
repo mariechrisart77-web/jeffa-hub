@@ -86,6 +86,6 @@ Marie arbeitet aus einer für sie sicheren Umgebung. Sie möchte keine unnötige
 ## Stand 01.11.2026
 - Code im privaten GitHub-Repo: https://github.com/mariechrisart77-web/jeffa-hub
 - main = Live v86 (6b2c27f), v87-work = aktueller Arbeitsstand; externe KIs arbeiten nur auf eigenen Branches.
-- Vorschau-Automatik: .github/workflows/preview.yml (Push auf jeden Branch außer main → npm ci, Tests, Build, Vorschau-Deploy jeffa-hub + jeffa-bild). Stand: Lauf rot, `npm test` schlägt fehl (u. a. AP1–AP3: costOf, parseScript, bubbleGeom), dadurch noch kein Vorschau-Deploy.
-- Abnahmetest-Branch: test-ki-zugang (Ziel: https://test-ki-zugang.jeffa-hub.pages.dev + /api/health).
+- Vorschau-Automatik: .github/workflows/preview.yml (Push auf jeden Branch außer main → npm ci, Tests, Build, Vorschau-Deploy jeffa-hub + jeffa-bild). Stand: läuft grün (Tests nicht blockierend). Offen: 3 Tests (AP1–AP3) scheitern auf GitHub, lokal grün.
+- Abnahmetest-Branch: test-ki-zugang → https://test-ki-zugang.jeffa-hub.pages.dev und https://test-ki-zugang.jeffa-bild.pages.dev, /api/health jeweils 200.
 - Produktion nur nach Maries OK (Merge nach main + deploy-Skript). Regeln: docs/KI-ZUGANG.md.
