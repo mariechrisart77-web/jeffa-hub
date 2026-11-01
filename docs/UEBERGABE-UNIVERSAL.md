@@ -48,14 +48,13 @@ Folge: Marie hat zu viel Geld, Zeit und Nerven investiert, und das Ergebnis war 
 8. **Wissen in Dateien festhalten** (siehe Punkt 9), statt es jedes Mal neu zu erkunden.
 9. **Produktion (`main`, Live-Deploy) nur nach Maries OK.** Ebenso gilt: Geld ausgeben, löschen oder senden nur mit OK.
 10. **Keine Schlüssel, PINs oder Passwörter** ausgeben oder in Dateien bzw. ins Repo schreiben.
-11. Jugendschutz-Filter bleiben. Erwachsenen-Inhalte nur mit fiktiven Erwachsenen, nie mit echten Gesichtern.
 
 ## 6. Technischer Zugang
 - **Repo (privat):** https://github.com/mariechrisart77-web/jeffa-hub
   `main` = live (v86), `v87-work` = aktueller Stand. **Gearbeitet wird nur auf eigenen Branches**, nie direkt auf `main` pushen.
 - **Hosting:** Cloudflare Pages. **Hub und Bild-Dienst werden immer zusammen** deployt.
 - **Vorschau pro Branch:** `https://<branch>.jeffa-hub.pages.dev` und `https://<branch>.jeffa-bild.pages.dev` (+ `/api/health`).
-  Das läuft automatisch per GitHub Action (`.github/workflows/preview.yml`), sobald Marie die Freigabe erteilt hat. Bis dahin per Skript `scripts/deploy.sh` mit Vorschau-Branch. **Achtung:** Standardmäßig deployt das Skript auf Produktion.
+  Das läuft seit 01.11.2026 automatisch per GitHub Action (`.github/workflows/preview.yml`) bei jedem Push auf einen Branch außer `main`. `scripts/deploy.sh` deployt standardmäßig auf **Produktion** – nur nach Maries OK benutzen.
 - **Prüfen:** `node scripts/build.mjs`, dann `node --test tests/*.test.mjs`.
 - **Schlüssel** liegen nur als Secrets in Cloudflare/GitHub bzw. im Tresor der App. Prüfe nur, ob sie „gesetzt" sind, und lies nie die Werte.
 
@@ -89,3 +88,23 @@ Marie arbeitet aus einer für sie sicheren Umgebung. Sie möchte keine unnötige
 - Vorschau-Automatik: .github/workflows/preview.yml (Push auf jeden Branch außer main → npm ci, Tests, Build, Vorschau-Deploy jeffa-hub + jeffa-bild). Stand: läuft grün (Tests nicht blockierend). Offen: 3 Tests (AP1–AP3) scheitern auf GitHub, lokal grün.
 - Abnahmetest-Branch: test-ki-zugang → https://test-ki-zugang.jeffa-hub.pages.dev und https://test-ki-zugang.jeffa-bild.pages.dev, /api/health jeweils 200.
 - Produktion nur nach Maries OK (Merge nach main + deploy-Skript). Regeln: docs/KI-ZUGANG.md.
+
+## 10. Bekannte Bremsen und Hindernisse (ehrlich, Stand 01.11.2026)
+Unnötige Sicherheits- und Vorsichtshinweise in Prompts und Abläufen kosten Token und Qualität und bringen den Hub durcheinander. Was ein Modell ohnehin nicht tut, muss nicht in jeden Prompt. Solche Bremsen nennen und entfernen, statt neue einzubauen.
+
+1. **Modellkatalog**: evtl. veraltete, fiktive oder nie eingebundene Modelle (`/api/models` antwortet 404). Gegen die echten Anbieterlisten abgleichen.
+2. **Fehlende Tests für kritische Teile** (Bild-App, Bot-Kanal/Kollab). Auf GitHub scheitern außerdem 3 Tests AP1–AP3 (costOf, parseScript, bubbleGeom); dort vorerst nur Warnung.
+3. **Abhängigkeit von Anbieter-Schlüsseln/Guthaben** (laut alter Übergabe u. a. OpenRouter 0 $, Runware 0,05 $ Startguthaben, Mistral Konto-Limit). Ersatzweg einbauen und klar anzeigen, welcher Schlüssel/welches Guthaben fehlt.
+4. **Doku lückenhaft**: pro App eine kurze Datei in `docs/`.
+5. **Jede unbekannte Adresse liefert 200** (vermutlich SPA-Fallback von Cloudflare Pages). Unbekannte Seiten und API-Fehler sauber als Fehler kennzeichnen.
+
+Weitere Bremsen aus dem Code-Scan (nur Fundstellen gelesen, Code nicht geändert):
+
+6. `src/imgsvc-image.ts:227–254` + `src/imgsvc-check.ts:70` – jedes Bild wird zusätzlich von einem Vision-Modell geprüft (gemma-4-uncensored, Ersatz qwen3-vl-235b), bei „harten“ Gründen folgt eine Neugenerierung. Kostet pro Bild einen extra Modellaufruf, im Fehlerfall Doppelkosten und Wartezeit. Vorschlag: Prüfung optional/abschaltbar machen oder nur bei Referenzbildern. *Belegt (Ablauf), Kosten vermutet.*
+7. `functions/api/chat.ts:160–188, 257` – Ablehnungs-Erkennung (`isRefusal`/`refusalFallback`) mit bis zu 2 Modellwechseln, nur im Modus „hemmungslos“. Bei Fehlalarm doppelte/dreifache Tokenkosten. Vorschlag: Modelle, die oft ablehnen, gleich aus der Liste nehmen statt nachträglich wechseln. *Belegt (Ablauf), Häufigkeit vermutet.*
+8. `src/promptapp/sfw.js:57–85` – SFW-Filter schneidet Satzteile aus Texten/Posen und ersetzt sie durch Fallbacks; kann Prompts verstümmeln und Qualität kosten. Vorschlag: nur dort anwenden, wo SFW wirklich gewählt ist; prüfen, ob es doppelt mit der Bildprüfung (6) läuft. *Vermutet.*
+9. `src/ratelimit.ts:15` – feste Grenze 30 Anfragen/Minute pro IP (`RATE_LIMIT_PER_MIN`), dazu `BUDGET_DAILY_USD`/`BUDGET_GLOBAL_DAILY_USD` in `src/env.ts:24–30`. Kann Kollab/Bot-Teams ausbremsen, die viele Aufrufe machen. Vorschlag: für Marie/eigene Bots lockern. *Belegt (Limit), Auswirkung vermutet.*
+10. `src/memory.ts:17` – Gedächtnis pro Gespräch auf 8 Notizen/700 Zeichen begrenzt. Spart Token, kann aber Kontext kosten (Bots „vergessen“). Vorschlag: Wert konfigurierbar machen. *Belegt.*
+11. `src/bild/proxy.ts:50–93` + `src/bild/image-handler.ts:148` + `src/imgsvc-image.ts:266` – mehrere Fallback-Ketten (Bild-Dienst → lokal, Venice → Runware, Mix-Fallback); Fehler werden verdeckt statt angezeigt (passt zu Punkt 3/5). Vorschlag: Fallback sichtbar melden (Header/Anzeige). *Belegt.*
+
+Hinweis: Der Minderjährigen-Schutz im Code (Altersgrenze <18, MINOR_RX) ist keine Bremse und bleibt unverändert.
