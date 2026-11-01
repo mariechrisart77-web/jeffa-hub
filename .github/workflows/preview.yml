@@ -1,0 +1,27 @@
+name: preview
+on:
+  push:
+    branches-ignore: [main]
+concurrency: { group: preview-${{ github.ref_name }}, cancel-in-progress: true }
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      BR: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm test --if-present
+      - run: printf 'export const BUILD = { commit: "%s", version: "preview" };\n' "$(git rev-parse --short HEAD)" > src/build-info.ts
+      - run: node scripts/build.mjs
+      - name: Deploy hub preview (never production)
+        run: |
+          [ "$BR" = main ] || [ "$BR" = production ] && exit 1
+          npx wrangler pages deploy --project-name jeffa-hub --branch "$BR" --commit-dirty=true
+      - name: Deploy bild preview
+        working-directory: services/bild
+        run: npx wrangler pages deploy --project-name jeffa-bild --branch "$BR" --commit-dirty=true
